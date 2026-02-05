@@ -94,15 +94,35 @@ export const TEAM_KEYWORDS: Record<string, string[]> = {
 export const NEWS_SOURCES = {
   ESPN: {
     name: 'ESPN',
+    id: 'espn',
     rssUrl: 'https://www.espn.com/espn/rss/nba/news',
     baseUrl: 'https://www.espn.com',
+    qualityBonus: 0, // Baseline source
   },
   BLEACHER_REPORT: {
     name: 'Bleacher Report',
-    rssUrl: 'https://bleacherreport.com/articles/feed?tag_id=19', // NBA tag
+    id: 'bleacher-report',
+    rssUrl: 'https://bleacherreport.com/articles/feed?tag_id=20', // NBA tag
     baseUrl: 'https://bleacherreport.com',
+    qualityBonus: 100, // Typically more detailed analysis
   },
 };
+
+// Clickbait phrases to penalize in quality scoring
+export const CLICKBAIT_PHRASES = [
+  "you won't believe",
+  'shocking',
+  'incredible',
+  'amazing',
+  'must see',
+  'will blow your mind',
+  "here's why",
+  'the reason will',
+  'what happened next',
+  'breaking:',
+  'just in:',
+  'wow!',
+];
 
 // Reddit API config for sentiment (using public JSON endpoints)
 export const REDDIT_CONFIG = {
