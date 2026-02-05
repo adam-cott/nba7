@@ -1,18 +1,19 @@
 /**
  * News API Route
  *
- * GET /api/news - Fetch NBA news from RSS feeds
+ * GET /api/news - Fetch NBA news from RSS feeds with VADER sentiment analysis
  * Query params:
  *   - team: Filter by team abbreviation (e.g., 'LAL', 'GSW')
  *   - refresh: Force refresh cache if 'true'
  *
- * This route fetches news from multiple sources, caches them in Supabase,
- * and returns them with optional team filtering.
+ * Sentiment is analyzed using VADER on Reddit comments when available,
+ * falling back to headline analysis if no comments are found.
  */
 
 import { NextRequest, NextResponse } from 'next/server';
 import { fetchAllNews, filterNewsByTeam } from '@/lib/news-fetcher';
-import { analyzeSentiment } from '@/lib/sentiment';
+import { analyzeSentiment, analyzeMultipleSentiments } from '@/lib/sentiment';
+import { fetchRedditComments, extractKeywords } from '@/lib/reddit';
 import { supabase, isSupabaseConfigured, TABLES } from '@/lib/supabase';
 import { NewsItem } from '@/lib/types';
 import { CACHE_DURATION } from '@/lib/constants';
@@ -22,6 +23,53 @@ let memoryCache: {
   items: NewsItem[];
   lastUpdated: number;
 } | null = null;
+
+/**
+ * Analyze sentiment for a news item using Reddit comments
+ * Falls back to headline analysis if no comments found
+ */
+async function analyzeNewsItemSentiment(headline: string, summary: string) {
+  try {
+    // Extract keywords and fetch Reddit comments
+    const searchQuery = extractKeywords(headline);
+    const comments = await fetchRedditComments(searchQuery);
+
+    if (comments.length >= 3) {
+      // Analyze Reddit comments for real fan sentiment
+      const analysis = await analyzeMultipleSentiments(comments);
+      return {
+        score: analysis.overall.score,
+        label: analysis.overall.label,
+        emoji: analysis.overall.emoji,
+        breakdown: analysis.breakdown,
+        source: 'reddit' as const,
+        commentCount: analysis.commentCount,
+      };
+    } else {
+      // Fallback: analyze the headline and summary with VADER
+      const sentiment = await analyzeSentiment(`${headline} ${summary}`);
+      return {
+        score: sentiment.score,
+        label: sentiment.label,
+        emoji: sentiment.emoji,
+        breakdown: sentiment.breakdown,
+        source: 'headline' as const,
+        commentCount: 0,
+      };
+    }
+  } catch (error) {
+    console.error('Error analyzing sentiment:', error);
+    // Return neutral on error
+    return {
+      score: 0,
+      label: 'neutral' as const,
+      emoji: '🟡',
+      breakdown: { positive: 33, neutral: 34, negative: 33 },
+      source: 'fallback' as const,
+      commentCount: 0,
+    };
+  }
+}
 
 export async function GET(request: NextRequest) {
   try {
@@ -33,7 +81,6 @@ export async function GET(request: NextRequest) {
     let cached = false;
     let lastUpdated = new Date().toISOString();
 
-    // Check if we should use cached data
     const now = Date.now();
 
     if (isSupabaseConfigured()) {
@@ -61,23 +108,32 @@ export async function GET(request: NextRequest) {
       if (!cached || forceRefresh) {
         const freshNews = await fetchAllNews();
 
-        // Analyze sentiment for each news item
-        const newsWithSentiment = await Promise.all(
-          freshNews.map(async (item) => {
-            const sentiment = await analyzeSentiment(
-              `${item.headline} ${item.summary}`
-            );
-            return {
-              ...item,
-              sentiment_score: sentiment.score,
-              sentiment_label: sentiment.label,
-              sentiment_breakdown: sentiment.breakdown,
-              created_at: new Date().toISOString(),
-            } as NewsItem;
-          })
-        );
+        // Analyze sentiment for each news item with Reddit comments
+        // Process in smaller batches to respect Reddit rate limits
+        const newsWithSentiment: NewsItem[] = [];
 
-        // Upsert to Supabase (update if URL exists, insert if new)
+        for (let i = 0; i < freshNews.length; i++) {
+          const item = freshNews[i];
+          const sentiment = await analyzeNewsItemSentiment(
+            item.headline || '',
+            item.summary || ''
+          );
+
+          newsWithSentiment.push({
+            ...item,
+            sentiment_score: sentiment.score,
+            sentiment_label: sentiment.label,
+            sentiment_breakdown: sentiment.breakdown,
+            created_at: new Date().toISOString(),
+          } as NewsItem);
+
+          // Small delay between Reddit API calls to respect rate limits
+          if (i < freshNews.length - 1 && sentiment.source === 'reddit') {
+            await new Promise(resolve => setTimeout(resolve, 200));
+          }
+        }
+
+        // Upsert to Supabase
         const { error } = await supabase
           .from(TABLES.NEWS_ITEMS)
           .upsert(newsWithSentiment, { onConflict: 'url' });
@@ -102,21 +158,29 @@ export async function GET(request: NextRequest) {
       } else {
         const freshNews = await fetchAllNews();
 
-        // Analyze sentiment for each news item
-        const newsWithSentiment = await Promise.all(
-          freshNews.map(async (item) => {
-            const sentiment = await analyzeSentiment(
-              `${item.headline} ${item.summary}`
-            );
-            return {
-              ...item,
-              sentiment_score: sentiment.score,
-              sentiment_label: sentiment.label,
-              sentiment_breakdown: sentiment.breakdown,
-              created_at: new Date().toISOString(),
-            } as NewsItem;
-          })
-        );
+        // Analyze sentiment with Reddit comments
+        const newsWithSentiment: NewsItem[] = [];
+
+        for (let i = 0; i < freshNews.length; i++) {
+          const item = freshNews[i];
+          const sentiment = await analyzeNewsItemSentiment(
+            item.headline || '',
+            item.summary || ''
+          );
+
+          newsWithSentiment.push({
+            ...item,
+            sentiment_score: sentiment.score,
+            sentiment_label: sentiment.label,
+            sentiment_breakdown: sentiment.breakdown,
+            created_at: new Date().toISOString(),
+          } as NewsItem);
+
+          // Small delay between Reddit API calls
+          if (i < freshNews.length - 1 && sentiment.source === 'reddit') {
+            await new Promise(resolve => setTimeout(resolve, 200));
+          }
+        }
 
         memoryCache = {
           items: newsWithSentiment,
