@@ -141,14 +141,19 @@ function createFingerprint(headline: string): string {
 }
 
 /**
- * Remove duplicate articles and keep the best version of each story
+ * Remove duplicate articles and keep the best version of each story.
+ * Enforces source balance — at least 40% from each source.
  */
 function removeDuplicates(articles: NewsItemWithSource[]): NewsItemWithSource[] {
   const duplicateGroups = new Map<string, NewsItemWithSource[]>();
 
   // Group articles with similar headlines together
   for (const article of articles) {
-    const fingerprint = createFingerprint(article.headline || '');
+    const fingerprint = (article.headline || '')
+      .toLowerCase()
+      .replace(/[^a-z0-9\s]/g, '')
+      .trim()
+      .substring(0, 50);
 
     if (!fingerprint) continue;
 
@@ -158,24 +163,27 @@ function removeDuplicates(articles: NewsItemWithSource[]): NewsItemWithSource[] 
     duplicateGroups.get(fingerprint)!.push(article);
   }
 
-  // For each group of duplicates, select the best article
-  const uniqueArticles: NewsItemWithSource[] = [];
+  // For true duplicates (same story), pick the better one using quality score
+  const deduped = Array.from(duplicateGroups.values()).map(group => {
+    if (group.length === 1) return group[0];
+    return group.reduce((best, current) =>
+      calculateArticleQuality(current) > calculateArticleQuality(best) ? current : best
+    );
+  });
 
-  for (const group of duplicateGroups.values()) {
-    if (group.length === 1) {
-      uniqueArticles.push(group[0]);
-    } else {
-      // Choose the best article based on quality metrics
-      const best = group.reduce((bestSoFar, current) => {
-        const bestScore = calculateArticleQuality(bestSoFar);
-        const currentScore = calculateArticleQuality(current);
-        return currentScore > bestScore ? current : bestSoFar;
-      });
-      uniqueArticles.push(best);
-    }
-  }
+  // Enforce source balance — guarantee at least 40% from each source
+  const espnArticles = deduped.filter(a => a.source_id === 'espn');
+  const brArticles = deduped.filter(a => a.source_id === 'bleacher-report');
 
-  return uniqueArticles;
+  const total = deduped.length;
+  const minPerSource = Math.floor(total * 0.4);
+
+  const espnPick = espnArticles.slice(0, Math.max(minPerSource, espnArticles.length));
+  const brPick = brArticles.slice(0, Math.max(minPerSource, brArticles.length));
+
+  // Merge and re-sort by recency
+  return [...espnPick, ...brPick]
+    .sort((a, b) => new Date(b.published_at || 0).getTime() - new Date(a.published_at || 0).getTime());
 }
 
 /**
