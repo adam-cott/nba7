@@ -6,14 +6,14 @@
  *   - team: Filter by team abbreviation (e.g., 'LAL', 'GSW')
  *   - refresh: Force refresh cache if 'true'
  *
- * Sentiment is analyzed using VADER on Reddit comments when available,
- * falling back to headline analysis if no comments are found.
+ * Sentiment is analyzed using VADER on tweets from Twitter/X when available,
+ * falling back to headline analysis if no tweets are found.
  */
 
 import { NextRequest, NextResponse } from 'next/server';
 import { fetchAllNews, filterNewsByTeam } from '@/lib/news-fetcher';
 import { analyzeSentiment, analyzeMultipleSentiments } from '@/lib/sentiment';
-import { fetchRedditComments, extractKeywords } from '@/lib/reddit';
+import { fetchTweets, extractKeywords } from '@/lib/twitter';
 import { supabase, isSupabaseConfigured, TABLES } from '@/lib/supabase';
 import { NewsItem } from '@/lib/types';
 import { CACHE_DURATION } from '@/lib/constants';
@@ -25,24 +25,24 @@ let memoryCache: {
 } | null = null;
 
 /**
- * Analyze sentiment for a news item using Reddit comments
- * Falls back to headline analysis if no comments found
+ * Analyze sentiment for a news item using Twitter/X tweets
+ * Falls back to headline analysis if no tweets found
  */
 async function analyzeNewsItemSentiment(headline: string, summary: string) {
   try {
-    // Extract keywords and fetch Reddit comments
+    // Extract keywords and fetch tweets
     const searchQuery = extractKeywords(headline);
-    const comments = await fetchRedditComments(searchQuery);
+    const tweets = await fetchTweets(searchQuery);
 
-    if (comments.length >= 3) {
-      // Analyze Reddit comments for real fan sentiment
-      const analysis = await analyzeMultipleSentiments(comments);
+    if (tweets.length > 0) {
+      // Analyze tweets for real fan sentiment
+      const analysis = await analyzeMultipleSentiments(tweets);
       return {
         score: analysis.overall.score,
         label: analysis.overall.label,
         emoji: analysis.overall.emoji,
         breakdown: analysis.breakdown,
-        source: 'reddit' as const,
+        source: 'twitter' as const,
         commentCount: analysis.commentCount,
       };
     } else {
@@ -108,8 +108,7 @@ export async function GET(request: NextRequest) {
       if (!cached || forceRefresh) {
         const freshNews = await fetchAllNews();
 
-        // Analyze sentiment for each news item with Reddit comments
-        // Process in smaller batches to respect Reddit rate limits
+        // Analyze sentiment for each news item with Twitter tweets
         const newsWithSentiment: NewsItem[] = [];
 
         for (let i = 0; i < freshNews.length; i++) {
@@ -127,8 +126,8 @@ export async function GET(request: NextRequest) {
             created_at: new Date().toISOString(),
           } as NewsItem);
 
-          // Small delay between Reddit API calls to respect rate limits
-          if (i < freshNews.length - 1 && sentiment.source === 'reddit') {
+          // Small delay between Twitter API calls to respect rate limits
+          if (i < freshNews.length - 1 && sentiment.source === 'twitter') {
             await new Promise(resolve => setTimeout(resolve, 200));
           }
         }
@@ -158,7 +157,7 @@ export async function GET(request: NextRequest) {
       } else {
         const freshNews = await fetchAllNews();
 
-        // Analyze sentiment with Reddit comments
+        // Analyze sentiment with Twitter tweets
         const newsWithSentiment: NewsItem[] = [];
 
         for (let i = 0; i < freshNews.length; i++) {
@@ -176,8 +175,8 @@ export async function GET(request: NextRequest) {
             created_at: new Date().toISOString(),
           } as NewsItem);
 
-          // Small delay between Reddit API calls
-          if (i < freshNews.length - 1 && sentiment.source === 'reddit') {
+          // Small delay between Twitter API calls
+          if (i < freshNews.length - 1 && sentiment.source === 'twitter') {
             await new Promise(resolve => setTimeout(resolve, 200));
           }
         }

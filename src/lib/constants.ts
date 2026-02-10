@@ -124,13 +124,6 @@ export const CLICKBAIT_PHRASES = [
   'wow!',
 ];
 
-// Reddit API config for sentiment (using public JSON endpoints)
-export const REDDIT_CONFIG = {
-  subreddit: 'nba',
-  baseUrl: 'https://www.reddit.com/r/nba',
-  postsLimit: 25,
-};
-
 // Sentiment thresholds
 export const SENTIMENT_THRESHOLDS = {
   POSITIVE: 0.2,  // Score > 0.2 is positive
