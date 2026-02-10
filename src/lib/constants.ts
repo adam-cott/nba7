@@ -99,11 +99,11 @@ export const NEWS_SOURCES = {
     baseUrl: 'https://www.espn.com',
     qualityBonus: 0, // Baseline source
   },
-  BLEACHER_REPORT: {
-    name: 'Bleacher Report',
-    id: 'bleacher-report',
-    rssUrl: 'https://bleacherreport.com/articles/feed?tag_id=20', // NBA tag
-    baseUrl: 'https://bleacherreport.com',
+  CBS_SPORTS: {
+    name: 'CBS Sports',
+    id: 'cbs-sports',
+    rssUrl: 'https://www.cbssports.com/rss/headlines/nba/',
+    baseUrl: 'https://www.cbssports.com',
     qualityBonus: 100, // Typically more detailed analysis
   },
 };

@@ -23,7 +23,7 @@ const SOURCE_STYLES: Record<string, { bg: string; text: string }> = {
     bg: 'bg-red-600',
     text: 'text-white',
   },
-  'bleacher-report': {
+  'cbs-sports': {
     bg: 'bg-blue-500',
     text: 'text-white',
   },

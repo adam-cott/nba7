@@ -9,7 +9,7 @@ export interface NewsItem {
   headline: string;
   summary: string;
   source: string;
-  source_id?: string; // Source identifier for styling (e.g., 'espn', 'bleacher-report')
+  source_id?: string; // Source identifier for styling (e.g., 'espn', 'cbs-sports')
   url: string;
   published_at: string;
   image_url?: string;

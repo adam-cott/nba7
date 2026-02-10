@@ -85,8 +85,8 @@ function calculateArticleQuality(article: NewsItemWithSource): number {
   score += summaryLength;
 
   // 2. Source preference (configured in constants)
-  if (article.source_id === 'bleacher-report') {
-    score += NEWS_SOURCES.BLEACHER_REPORT.qualityBonus;
+  if (article.source_id === 'cbs-sports') {
+    score += NEWS_SOURCES.CBS_SPORTS.qualityBonus;
   } else if (article.source_id === 'espn') {
     score += NEWS_SOURCES.ESPN.qualityBonus;
   }
@@ -173,16 +173,16 @@ function removeDuplicates(articles: NewsItemWithSource[]): NewsItemWithSource[] 
 
   // Enforce source balance — guarantee at least 40% from each source
   const espnArticles = deduped.filter(a => a.source_id === 'espn');
-  const brArticles = deduped.filter(a => a.source_id === 'bleacher-report');
+  const cbsArticles = deduped.filter(a => a.source_id === 'cbs-sports');
 
   const total = deduped.length;
   const minPerSource = Math.floor(total * 0.4);
 
   const espnPick = espnArticles.slice(0, Math.max(minPerSource, espnArticles.length));
-  const brPick = brArticles.slice(0, Math.max(minPerSource, brArticles.length));
+  const cbsPick = cbsArticles.slice(0, Math.max(minPerSource, cbsArticles.length));
 
   // Merge and re-sort by recency
-  return [...espnPick, ...brPick]
+  return [...espnPick, ...cbsPick]
     .sort((a, b) => new Date(b.published_at || 0).getTime() - new Date(a.published_at || 0).getTime());
 }
 
@@ -211,25 +211,25 @@ async function fetchESPNNews(): Promise<NewsItemWithSource[]> {
 }
 
 /**
- * Fetch news from Bleacher Report RSS feed
+ * Fetch news from CBS Sports RSS feed
  */
-async function fetchBleacherReportNews(): Promise<NewsItemWithSource[]> {
+async function fetchCBSSportsNews(): Promise<NewsItemWithSource[]> {
   try {
-    const feed = await parser.parseURL(NEWS_SOURCES.BLEACHER_REPORT.rssUrl);
+    const feed = await parser.parseURL(NEWS_SOURCES.CBS_SPORTS.rssUrl);
 
     return feed.items.map((item) => ({
       id: randomUUID(),
       headline: item.title || 'No title',
       summary: item.contentSnippet || item.content?.slice(0, 300) || '',
-      source: NEWS_SOURCES.BLEACHER_REPORT.name,
-      source_id: NEWS_SOURCES.BLEACHER_REPORT.id,
+      source: NEWS_SOURCES.CBS_SPORTS.name,
+      source_id: NEWS_SOURCES.CBS_SPORTS.id,
       url: item.link || '',
       published_at: item.pubDate || new Date().toISOString(),
       image_url: extractImageUrl(item),
       teams: matchTeams(item.title || '', item.contentSnippet),
     }));
   } catch (error) {
-    console.error('Error fetching Bleacher Report news:', error);
+    console.error('Error fetching CBS Sports news:', error);
     return [];
   }
 }
@@ -242,14 +242,14 @@ export async function fetchAllNews(): Promise<Partial<NewsItem>[]> {
   // Fetch from all sources in parallel using Promise.allSettled for resilience
   const results = await Promise.allSettled([
     fetchESPNNews(),
-    fetchBleacherReportNews(),
+    fetchCBSSportsNews(),
   ]);
 
   // Combine results from successful fetches
   const allNews: NewsItemWithSource[] = [];
 
   results.forEach((result, index) => {
-    const sourceName = index === 0 ? 'ESPN' : 'Bleacher Report';
+    const sourceName = index === 0 ? 'ESPN' : 'CBS Sports';
     if (result.status === 'fulfilled') {
       console.log(`Fetched ${result.value.length} articles from ${sourceName}`);
       allNews.push(...result.value);
