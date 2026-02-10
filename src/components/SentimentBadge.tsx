@@ -125,7 +125,7 @@ export default function SentimentBadge({
             </div>
 
             <p className="text-gray-400 text-[10px] mt-2">
-              Based on Twitter/X fan reactions
+              Based on YouTube fan comments
             </p>
 
             {/* Tooltip arrow */}
