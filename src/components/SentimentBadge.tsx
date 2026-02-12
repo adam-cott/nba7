@@ -82,10 +82,10 @@ export default function SentimentBadge({
         <span>{config.label}</span>
       </span>
 
-      {/* Tooltip with breakdown */}
+      {/* Tooltip with breakdown — centered above the badge */}
       {showTooltip && breakdown && (
-        <div className="absolute bottom-full left-0 mb-2 z-50 animate-in fade-in duration-150">
-          <div className="bg-gray-900 text-white text-xs rounded-lg px-3 py-2 shadow-lg min-w-[160px]">
+        <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 z-50 animate-in fade-in duration-150">
+          <div className="bg-gray-900 text-white text-xs rounded-lg px-3 py-2 shadow-lg w-[200px]">
             <p className="font-medium mb-2">{config.description}</p>
 
             {/* Breakdown bars */}
@@ -128,8 +128,8 @@ export default function SentimentBadge({
               Based on YouTube fan comments
             </p>
 
-            {/* Tooltip arrow */}
-            <div className="absolute top-full left-4 w-0 h-0 border-l-[6px] border-l-transparent border-r-[6px] border-r-transparent border-t-[6px] border-t-gray-900" />
+            {/* Tooltip arrow — centered */}
+            <div className="absolute top-full left-1/2 -translate-x-1/2 w-0 h-0 border-l-[6px] border-l-transparent border-r-[6px] border-r-transparent border-t-[6px] border-t-gray-900" />
           </div>
         </div>
       )}

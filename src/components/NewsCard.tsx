@@ -45,7 +45,7 @@ export default function NewsCard({ item }: NewsCardProps) {
   const sourceStyle = getSourceStyle(item.source_id);
 
   return (
-    <article className="bg-white rounded-lg shadow-md overflow-hidden hover:shadow-lg transition-shadow duration-200 border border-gray-100">
+    <article className="bg-white rounded-lg shadow-md hover:shadow-lg transition-shadow duration-200 border border-gray-100">
       <a
         href={item.url}
         target="_blank"
