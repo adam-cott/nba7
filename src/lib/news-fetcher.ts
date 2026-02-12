@@ -60,8 +60,9 @@ const BLOCKED_CBS_PATH_SEGMENTS = [
  */
 const NON_NBA_KEYWORDS = [
   'nfl mock draft',
-  'mock draft',
   'nfl draft',
+  'mlb mock draft',
+  'nhl mock draft',
   'nfl free agency',
   'winter olympics',
   'summer olympics',
