@@ -86,11 +86,15 @@ export async function fetchYouTubeComments(searchQuery: string): Promise<string[
 }
 
 /**
- * Extract meaningful keywords from a headline for YouTube search
+ * Extract meaningful keywords from a headline for YouTube search.
+ * Prioritizes proper nouns (player/team names) and keeps basketball action
+ * words like "trade", "injury", "fired", etc. Only strips generic English
+ * stop words and "nba" (which is appended separately by the caller).
  */
 export function extractKeywords(headline: string): string {
   if (!headline) return '';
 
+  // Only strip truly generic English words — keep all basketball-meaningful terms
   const stopWords = new Set([
     'the', 'a', 'an', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for',
     'of', 'with', 'by', 'from', 'as', 'is', 'was', 'are', 'were', 'been',
@@ -102,19 +106,36 @@ export function extractKeywords(headline: string): string {
     'all', 'each', 'every', 'both', 'few', 'more', 'most', 'other',
     'some', 'such', 'no', 'not', 'only', 'same', 'so', 'than', 'too',
     'very', 'just', 'also', 'now', 'here', 'there', 'then', 'once',
-    'nba', 'basketball', 'game', 'team', 'player', 'season', 'news',
-    'report', 'reports', 'says', 'said', 'according', 'sources', 'per',
+    'nba', 'says', 'said', 'according', 'per', 'via', 'new', 'latest',
+    'update', 'breaking', 'report', 'reports', 'sources',
   ]);
 
-  const words = headline
-    .toLowerCase()
-    .replace(/[^\w\s'-]/g, ' ')
-    .split(/\s+/)
-    .filter(word =>
-      word.length > 2 &&
-      !stopWords.has(word) &&
-      !/^\d+$/.test(word)
-    );
+  const cleaned = headline.replace(/[^\w\s'-]/g, ' ');
 
-  return words.slice(0, 5).join(' ');
+  // Split into words, preserving original casing for proper noun detection
+  const rawWords = cleaned.split(/\s+/).filter(w => w.length > 1);
+
+  // Separate proper nouns (capitalized words) from regular words
+  const properNouns: string[] = [];
+  const regularWords: string[] = [];
+
+  for (const word of rawWords) {
+    const lower = word.toLowerCase();
+    if (stopWords.has(lower) || /^\d+$/.test(lower)) continue;
+
+    // Proper noun: starts with uppercase and isn't the first word (which is always capitalized)
+    const isProperNoun = word[0] === word[0].toUpperCase() &&
+      word[0] !== word[0].toLowerCase();
+
+    if (isProperNoun) {
+      properNouns.push(word);
+    } else {
+      regularWords.push(lower);
+    }
+  }
+
+  // Build query: proper nouns first (most specific), then action words
+  const selected = [...properNouns, ...regularWords].slice(0, 4);
+
+  return selected.join(' ');
 }
