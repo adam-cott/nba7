@@ -241,50 +241,159 @@ function calculateArticleQuality(article: NewsItemWithSource): number {
   return score;
 }
 
+/** Words to strip before comparing headlines for fuzzy deduplication */
+const DEDUP_STOP_WORDS = new Set([
+  'a', 'an', 'the', 'is', 'are', 'was', 'were', 'be', 'been', 'being',
+  'to', 'of', 'in', 'on', 'at', 'by', 'for', 'with', 'from', 'as',
+  'and', 'or', 'but', 'not', 'no', 'so', 'if', 'than', 'too', 'very',
+  'after', 'before', 'into', 'about', 'up', 'out', 'off', 'over',
+  'he', 'she', 'it', 'its', 'his', 'her', 'they', 'their', 'we',
+  'has', 'have', 'had', 'do', 'does', 'did', 'will', 'would', 'could',
+  'may', 'might', 'can', 'should', 'shall', 'must',
+  'this', 'that', 'these', 'those', 'who', 'what', 'when', 'where',
+  'how', 'why', 'all', 'each', 'both', 'more', 'most', 'some', 'any',
+  'new', 'per', 'via', 'says', 'said', 'just', 'also', 'now',
+]);
+
+const FUZZY_SIMILARITY_THRESHOLD = 0.45;
+const DEDUP_TIME_WINDOW_MS = 12 * 60 * 60 * 1000; // 12 hours
+
 /**
- * Remove duplicate articles and keep the best version of each story.
- * Enforces source balance — at least 40% from each source.
+ * Basic stemming: strip common suffixes so "trade"/"trades"/"trading" match.
+ */
+function simpleStem(word: string): string {
+  if (word.length <= 3) return word;
+  return word
+    .replace(/ing$/, '')
+    .replace(/tion$/, 't')
+    .replace(/sion$/, 's')
+    .replace(/ment$/, '')
+    .replace(/ness$/, '')
+    .replace(/able$/, '')
+    .replace(/ible$/, '')
+    .replace(/ies$/, 'y')
+    .replace(/ves$/, 'f')
+    .replace(/ed$/, '')
+    .replace(/es$/, '')
+    .replace(/s$/, '')
+    || word;
+}
+
+/**
+ * Extract a set of meaningful stemmed words from headline + summary for comparison.
+ */
+function articleWordSet(headline: string, summary: string): Set<string> {
+  const text = `${headline} ${summary}`;
+  return new Set(
+    text
+      .toLowerCase()
+      .replace(/[^a-z0-9\s]/g, ' ')
+      .split(/\s+/)
+      .filter(w => w.length > 1 && !DEDUP_STOP_WORDS.has(w))
+      .map(simpleStem)
+      .filter(w => w.length > 1)
+  );
+}
+
+/**
+ * Extract proper nouns (entity names) from headline text.
+ * These are the strongest signal for same-story detection.
+ */
+function extractEntities(headline: string): Set<string> {
+  const words = headline
+    .replace(/[^\w\s'-]/g, ' ')
+    .split(/\s+/)
+    .filter(w => w.length > 1);
+
+  const entities = new Set<string>();
+  for (const word of words) {
+    // Proper noun: starts with uppercase letter
+    if (word[0] >= 'A' && word[0] <= 'Z' && !DEDUP_STOP_WORDS.has(word.toLowerCase())) {
+      entities.add(word.toLowerCase());
+    }
+  }
+  return entities;
+}
+
+/** Minimum shared entities required to treat articles as duplicates */
+const MIN_SHARED_ENTITIES = 2;
+
+/**
+ * Jaccard similarity: |A ∩ B| / |A ∪ B|
+ */
+function jaccardSimilarity(a: Set<string>, b: Set<string>): number {
+  if (a.size === 0 && b.size === 0) return 0;
+  let intersection = 0;
+  for (const word of a) {
+    if (b.has(word)) intersection++;
+  }
+  const union = a.size + b.size - intersection;
+  return union === 0 ? 0 : intersection / union;
+}
+
+/**
+ * Remove duplicate articles using fuzzy Jaccard similarity on headlines.
+ * Keeps the newer article when two cover the same story.
+ * Only considers articles within a 12-hour window as potential duplicates.
  */
 function removeDuplicates(articles: NewsItemWithSource[]): NewsItemWithSource[] {
-  const duplicateGroups = new Map<string, NewsItemWithSource[]>();
+  if (articles.length === 0) return [];
 
-  // Group articles with similar headlines together
-  for (const article of articles) {
-    const fingerprint = (article.headline || '')
-      .toLowerCase()
-      .replace(/[^a-z0-9\s]/g, '')
-      .trim()
-      .substring(0, 50);
+  // Precompute word sets, entity sets, and timestamps
+  const items = articles.map(article => ({
+    article,
+    words: articleWordSet(article.headline || '', article.summary || ''),
+    entities: extractEntities(article.headline || ''),
+    time: new Date(article.published_at || 0).getTime(),
+  }));
 
-    if (!fingerprint) continue;
+  // Track which articles are marked as duplicates
+  const isDuplicate = new Array(items.length).fill(false);
 
-    if (!duplicateGroups.has(fingerprint)) {
-      duplicateGroups.set(fingerprint, []);
+  for (let i = 0; i < items.length; i++) {
+    if (isDuplicate[i]) continue;
+
+    for (let j = i + 1; j < items.length; j++) {
+      if (isDuplicate[j]) continue;
+
+      // Skip if articles are more than 12 hours apart
+      if (Math.abs(items[i].time - items[j].time) > DEDUP_TIME_WINDOW_MS) continue;
+
+      const similarity = jaccardSimilarity(items[i].words, items[j].words);
+
+      // Count shared entities (proper nouns like player/team names)
+      let sharedEntities = 0;
+      for (const entity of items[i].entities) {
+        if (items[j].entities.has(entity)) sharedEntities++;
+      }
+
+      // Duplicate if word sets are similar enough OR if 2+ named entities match
+      const isDup = similarity >= FUZZY_SIMILARITY_THRESHOLD || sharedEntities >= MIN_SHARED_ENTITIES;
+
+      if (isDup) {
+        // Keep the newer article, mark the older one as duplicate
+        const olderIdx = items[i].time >= items[j].time ? j : i;
+        const newerIdx = olderIdx === i ? j : i;
+        isDuplicate[olderIdx] = true;
+        const reason = sharedEntities >= MIN_SHARED_ENTITIES
+          ? `${sharedEntities} shared entities`
+          : `${(similarity * 100).toFixed(0)}% word similarity`;
+        console.log(
+          `Fuzzy dedup (${reason}): keeping "${items[newerIdx].article.headline}" [${items[newerIdx].article.source}], ` +
+          `removing "${items[olderIdx].article.headline}" [${items[olderIdx].article.source}]`
+        );
+      }
     }
-    duplicateGroups.get(fingerprint)!.push(article);
   }
 
-  // For true duplicates (same story), pick the better one using quality score
-  const deduped = Array.from(duplicateGroups.values()).map(group => {
-    if (group.length === 1) return group[0];
-    return group.reduce((best, current) =>
-      calculateArticleQuality(current) > calculateArticleQuality(best) ? current : best
-    );
-  });
+  const deduped = items
+    .filter((_, i) => !isDuplicate[i])
+    .map(item => item.article);
 
-  // Enforce source balance — guarantee at least 40% from each source
-  const espnArticles = deduped.filter(a => a.source_id === 'espn');
-  const cbsArticles = deduped.filter(a => a.source_id === 'cbs-sports');
-
-  const total = deduped.length;
-  const minPerSource = Math.floor(total * 0.4);
-
-  const espnPick = espnArticles.slice(0, Math.max(minPerSource, espnArticles.length));
-  const cbsPick = cbsArticles.slice(0, Math.max(minPerSource, cbsArticles.length));
-
-  // Merge and re-sort by recency
-  return [...espnPick, ...cbsPick]
-    .sort((a, b) => new Date(b.published_at || 0).getTime() - new Date(a.published_at || 0).getTime());
+  // Sort by recency
+  return deduped.sort(
+    (a, b) => new Date(b.published_at || 0).getTime() - new Date(a.published_at || 0).getTime()
+  );
 }
 
 /**
