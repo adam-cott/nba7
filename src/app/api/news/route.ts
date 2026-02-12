@@ -16,7 +16,7 @@ import { analyzeSentiment, analyzeMultipleSentiments } from '@/lib/sentiment';
 import { fetchYouTubeComments, extractKeywords } from '@/lib/youtube';
 import { supabase, isSupabaseConfigured, TABLES } from '@/lib/supabase';
 import { NewsItem } from '@/lib/types';
-import { CACHE_DURATION } from '@/lib/constants';
+import { CACHE_DURATION, SENTIMENT_CACHE_HOURS } from '@/lib/constants';
 
 // In-memory cache for when Supabase is not configured
 let memoryCache: {
@@ -24,18 +24,12 @@ let memoryCache: {
   lastUpdated: number;
 } | null = null;
 
-/**
- * Analyze sentiment for a news item using YouTube comments
- * Falls back to headline analysis if no comments found
- */
 async function analyzeNewsItemSentiment(headline: string, summary: string) {
   try {
-    // Extract keywords and fetch YouTube comments
     const searchQuery = extractKeywords(headline);
     const comments = await fetchYouTubeComments(searchQuery);
 
     if (comments.length > 0) {
-      // Analyze YouTube comments for real fan sentiment
       const analysis = await analyzeMultipleSentiments(comments);
       return {
         score: analysis.overall.score,
@@ -45,21 +39,19 @@ async function analyzeNewsItemSentiment(headline: string, summary: string) {
         source: 'youtube' as const,
         commentCount: analysis.commentCount,
       };
-    } else {
-      // Fallback: analyze the headline and summary with VADER
-      const sentiment = await analyzeSentiment(`${headline} ${summary}`);
-      return {
-        score: sentiment.score,
-        label: sentiment.label,
-        emoji: sentiment.emoji,
-        breakdown: sentiment.breakdown,
-        source: 'headline' as const,
-        commentCount: 0,
-      };
     }
+
+    const sentiment = await analyzeSentiment(`${headline} ${summary}`);
+    return {
+      score: sentiment.score,
+      label: sentiment.label,
+      emoji: sentiment.emoji,
+      breakdown: sentiment.breakdown,
+      source: 'headline' as const,
+      commentCount: 0,
+    };
   } catch (error) {
     console.error('Error analyzing sentiment:', error);
-    // Return neutral on error
     return {
       score: 0,
       label: 'neutral' as const,
@@ -108,27 +100,67 @@ export async function GET(request: NextRequest) {
       if (!cached || forceRefresh) {
         const freshNews = await fetchAllNews();
 
-        // Analyze sentiment for each news item with YouTube comments
+        // Batch-fetch existing sentiment to avoid redundant YouTube API calls
+        const freshUrls = freshNews.map(item => item.url).filter(Boolean) as string[];
+        const sentimentByUrl = new Map();
+
+        if (freshUrls.length > 0) {
+          const { data } = await supabase
+            .from(TABLES.NEWS_ITEMS)
+            .select('url, sentiment_score, sentiment_label, sentiment_breakdown, sentiment_source, sentiment_comment_count, sentiment_analyzed_at')
+            .in('url', freshUrls);
+
+          for (const row of data || []) {
+            sentimentByUrl.set(row.url, row);
+          }
+        }
+
+        const sentimentMaxAge = SENTIMENT_CACHE_HOURS * 60 * 60 * 1000;
+
+        // Analyze sentiment for each news item, reusing cached sentiment when fresh
         const newsWithSentiment: NewsItem[] = [];
 
         for (let i = 0; i < freshNews.length; i++) {
           const item = freshNews[i];
-          const sentiment = await analyzeNewsItemSentiment(
-            item.headline || '',
-            item.summary || ''
-          );
+          const existing = item.url ? sentimentByUrl.get(item.url) : undefined;
+          const hasFreshSentiment = existing?.sentiment_analyzed_at &&
+            (Date.now() - new Date(existing.sentiment_analyzed_at).getTime()) < sentimentMaxAge;
 
-          newsWithSentiment.push({
-            ...item,
-            sentiment_score: sentiment.score,
-            sentiment_label: sentiment.label,
-            sentiment_breakdown: sentiment.breakdown,
-            created_at: new Date().toISOString(),
-          } as NewsItem);
+          if (hasFreshSentiment) {
+            // Reuse cached sentiment — no YouTube API call needed
+            console.log(`Using cached sentiment for: ${(item.headline || '').substring(0, 50)}...`);
+            newsWithSentiment.push({
+              ...item,
+              sentiment_score: existing.sentiment_score,
+              sentiment_label: existing.sentiment_label,
+              sentiment_breakdown: existing.sentiment_breakdown,
+              sentiment_source: existing.sentiment_source,
+              sentiment_comment_count: existing.sentiment_comment_count,
+              sentiment_analyzed_at: existing.sentiment_analyzed_at,
+              created_at: new Date().toISOString(),
+            } as NewsItem);
+          } else {
+            // Cache miss or stale — analyze fresh via YouTube
+            const sentiment = await analyzeNewsItemSentiment(
+              item.headline || '',
+              item.summary || ''
+            );
 
-          // Small delay between YouTube API calls to respect rate limits
-          if (i < freshNews.length - 1 && sentiment.source === 'youtube') {
-            await new Promise(resolve => setTimeout(resolve, 200));
+            newsWithSentiment.push({
+              ...item,
+              sentiment_score: sentiment.score,
+              sentiment_label: sentiment.label,
+              sentiment_breakdown: sentiment.breakdown,
+              sentiment_source: sentiment.source,
+              sentiment_comment_count: sentiment.commentCount,
+              sentiment_analyzed_at: new Date().toISOString(),
+              created_at: new Date().toISOString(),
+            } as NewsItem);
+
+            // Small delay between YouTube API calls to respect rate limits
+            if (i < freshNews.length - 1 && sentiment.source === 'youtube') {
+              await new Promise(resolve => setTimeout(resolve, 200));
+            }
           }
         }
 
@@ -172,6 +204,9 @@ export async function GET(request: NextRequest) {
             sentiment_score: sentiment.score,
             sentiment_label: sentiment.label,
             sentiment_breakdown: sentiment.breakdown,
+            sentiment_source: sentiment.source,
+            sentiment_comment_count: sentiment.commentCount,
+            sentiment_analyzed_at: new Date().toISOString(),
             created_at: new Date().toISOString(),
           } as NewsItem);
 
@@ -191,7 +226,6 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    // Apply team filter
     const filteredNews = filterNewsByTeam(newsItems, teamFilter);
 
     return NextResponse.json({

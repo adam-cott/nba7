@@ -124,14 +124,9 @@ export const CLICKBAIT_PHRASES = [
   'wow!',
 ];
 
-// Sentiment thresholds
-export const SENTIMENT_THRESHOLDS = {
-  POSITIVE: 0.2,  // Score > 0.2 is positive
-  NEGATIVE: -0.2, // Score < -0.2 is negative
-};
-
-// Cache duration in milliseconds
 export const CACHE_DURATION = {
   NEWS: 15 * 60 * 1000, // 15 minutes
-  SENTIMENT: 30 * 60 * 1000, // 30 minutes
 };
+
+// How long cached sentiment stays fresh before re-analyzing via YouTube (in hours)
+export const SENTIMENT_CACHE_HOURS = 6;

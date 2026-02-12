@@ -1,7 +1,7 @@
 /**
  * News Fetching Utilities
  *
- * Handles fetching NBA news from multiple RSS feeds (ESPN, Bleacher Report).
+ * Handles fetching NBA news from multiple RSS feeds (ESPN, CBS Sports).
  * Implements smart duplicate detection that keeps the higher-quality article.
  */
 
@@ -10,12 +10,39 @@ import { randomUUID } from 'crypto';
 import { NewsItem } from './types';
 import { TEAM_KEYWORDS, NEWS_SOURCES, CLICKBAIT_PHRASES } from './constants';
 
-// Extended news item with source_id for quality scoring
-interface NewsItemWithSource extends Partial<NewsItem> {
-  source_id?: string;
+/**
+ * Betting-related keywords to filter out sports betting / gambling articles.
+ * "odds" and "picks" have been made more specific to avoid false positives
+ * on legitimate articles (e.g., "odds of making the playoffs", "top draft picks").
+ */
+const BETTING_KEYWORDS = [
+  'promo code',
+  'bonus bets',
+  'best bets',
+  'player props',
+  'betting odds',
+  'betting',
+  'wager',
+  'sportsline',
+  'draftkings',
+  'fanduel',
+  'betmgm',
+  'affiliate',
+  'expert picks',
+  'against the spread',
+  'parlay',
+];
+
+/**
+ * Check if an article is betting/gambling content based on title and description.
+ */
+function isBettingContent(title: string, description: string): boolean {
+  const text = `${title} ${description}`.toLowerCase();
+  return BETTING_KEYWORDS.some(keyword => text.includes(keyword));
 }
 
-// Initialize RSS parser with custom fields
+type NewsItemWithSource = Partial<NewsItem>;
+
 const parser = new Parser({
   customFields: {
     item: [
@@ -59,7 +86,7 @@ export function matchTeams(headline: string, content?: string): string[] {
 
   for (const [abbr, keywords] of Object.entries(TEAM_KEYWORDS)) {
     for (const keyword of keywords) {
-      if (text.includes(keyword.toLowerCase())) {
+      if (text.includes(keyword)) {
         if (!matchedTeams.includes(abbr)) {
           matchedTeams.push(abbr);
         }
@@ -126,18 +153,6 @@ function calculateArticleQuality(article: NewsItemWithSource): number {
   }
 
   return score;
-}
-
-/**
- * Create a fingerprint from headline for duplicate detection
- */
-function createFingerprint(headline: string): string {
-  return headline
-    .toLowerCase()
-    .replace(/[^a-z0-9\s]/g, '')
-    .replace(/\s+/g, ' ')
-    .trim()
-    .substring(0, 60);
 }
 
 /**
@@ -258,16 +273,17 @@ export async function fetchAllNews(): Promise<Partial<NewsItem>[]> {
     }
   });
 
-  // Remove duplicates and keep best version
-  const uniqueNews = removeDuplicates(allNews);
-
-  // Sort by published date (newest first)
-  uniqueNews.sort((a, b) => {
-    const dateA = new Date(a.published_at || 0).getTime();
-    const dateB = new Date(b.published_at || 0).getTime();
-    return dateB - dateA;
+  // Filter out betting/gambling content
+  const filteredNews = allNews.filter(article => {
+    const isBetting = isBettingContent(article.headline || '', article.summary || '');
+    if (isBetting) {
+      console.log(`Filtered out betting article: "${article.headline}" [${article.source}]`);
+    }
+    return !isBetting;
   });
+  console.log(`Filtered out ${allNews.length - filteredNews.length} betting articles`);
 
+  const uniqueNews = removeDuplicates(filteredNews);
   console.log(`Total articles after deduplication: ${uniqueNews.length}`);
 
   return uniqueNews;
