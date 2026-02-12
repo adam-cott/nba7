@@ -23,28 +23,45 @@ function getEmoji(label: SentimentLabel): string {
   }
 }
 
+/**
+ * Ensure three rounded percentages always sum to exactly 100
+ * by adjusting the largest value to absorb rounding error.
+ */
+function normalizePercentages(a: number, b: number, c: number): [number, number, number] {
+  const ra = Math.round(a);
+  const rb = Math.round(b);
+  const rc = Math.round(c);
+  const diff = 100 - (ra + rb + rc);
+  // Adjust the largest bucket to absorb the rounding error
+  const vals: [number, number, number] = [ra, rb, rc];
+  const maxIdx = vals.indexOf(Math.max(...vals));
+  vals[maxIdx] += diff;
+  return vals;
+}
+
 function getBreakdown(score: number): SentimentBreakdown {
-  const normalized = (score + 1) / 2;
+  // Map compound score (-1 to 1) into rough positive/neutral/negative shares
+  // that always sum to 100%.
+  const normalized = (score + 1) / 2; // 0 = most negative, 1 = most positive
+
+  let rawPositive: number, rawNeutral: number, rawNegative: number;
 
   if (score >= 0.05) {
-    return {
-      positive: Math.round(50 + normalized * 40),
-      neutral: Math.round(20 + (1 - normalized) * 20),
-      negative: Math.round(10 + (1 - normalized) * 10),
-    };
+    rawPositive = 50 + normalized * 30;  // ~65-80
+    rawNegative = 5 + (1 - normalized) * 10; // ~5-10
+    rawNeutral = 100 - rawPositive - rawNegative;
   } else if (score <= -0.05) {
-    return {
-      positive: Math.round(10 + normalized * 10),
-      neutral: Math.round(20 + normalized * 20),
-      negative: Math.round(50 + (1 - normalized) * 40),
-    };
+    rawNegative = 50 + (1 - normalized) * 30; // ~65-80
+    rawPositive = 5 + normalized * 10; // ~5-10
+    rawNeutral = 100 - rawPositive - rawNegative;
   } else {
-    return {
-      positive: Math.round(25 + normalized * 15),
-      neutral: Math.round(40 + Math.abs(0.5 - normalized) * 20),
-      negative: Math.round(25 + (1 - normalized) * 15),
-    };
+    rawNeutral = 50 + (1 - Math.abs(score) * 20) * 5; // ~50-55
+    rawPositive = (100 - rawNeutral) * (0.5 + score);
+    rawNegative = 100 - rawNeutral - rawPositive;
   }
+
+  const [positive, neutral, negative] = normalizePercentages(rawPositive, rawNeutral, rawNegative);
+  return { positive, neutral, negative };
 }
 
 export async function analyzeSentiment(text: string): Promise<{
@@ -86,10 +103,15 @@ export async function analyzeMultipleSentiments(texts: string[]): Promise<{
   const neutral = sentiments.filter(s => s.label === 'neutral').length;
   const negative = sentiments.filter(s => s.label === 'negative').length;
 
+  const [pPct, nPct, negPct] = normalizePercentages(
+    (positive / total) * 100,
+    (neutral / total) * 100,
+    (negative / total) * 100,
+  );
   const breakdown: SentimentBreakdown = {
-    positive: Math.round((positive / total) * 100),
-    neutral: Math.round((neutral / total) * 100),
-    negative: Math.round((negative / total) * 100),
+    positive: pPct,
+    neutral: nPct,
+    negative: negPct,
   };
 
   const avgScore = sentiments.reduce((sum, s) => sum + s.score, 0) / total;

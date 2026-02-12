@@ -85,7 +85,7 @@ export default function SentimentBadge({
       {/* Tooltip with breakdown — centered above the badge */}
       {showTooltip && breakdown && (
         <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 z-50 animate-in fade-in duration-150">
-          <div className="bg-gray-900 text-white text-xs rounded-lg px-3 py-2 shadow-lg w-[200px]">
+          <div className="bg-gray-900 text-white text-xs rounded-lg px-3 py-2 shadow-lg w-[180px]">
             <p className="font-medium mb-2">{config.description}</p>
 
             {/* Breakdown bars */}
