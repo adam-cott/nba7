@@ -41,6 +41,35 @@ function isBettingContent(title: string, description: string): boolean {
   return BETTING_KEYWORDS.some(keyword => text.includes(keyword));
 }
 
+const OG_IMAGE_TIMEOUT_MS = 5000;
+
+/**
+ * Fetch the og:image meta tag from an article URL.
+ * Returns undefined if the fetch fails or times out.
+ */
+async function fetchOgImage(url: string): Promise<string | undefined> {
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), OG_IMAGE_TIMEOUT_MS);
+
+    const response = await fetch(url, {
+      signal: controller.signal,
+      headers: { 'User-Agent': 'NBANewsHub/1.0' },
+    });
+    clearTimeout(timeout);
+
+    // Only read enough of the HTML to find the og:image (usually in <head>)
+    const html = await response.text();
+    const head = html.substring(0, 15000);
+    const match = head.match(/<meta[^>]+property=["']og:image["'][^>]+content=["']([^"']+)["']/i)
+      || head.match(/<meta[^>]+content=["']([^"']+)["'][^>]+property=["']og:image["']/i);
+
+    return match?.[1] || undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 type NewsItemWithSource = Partial<NewsItem>;
 
 const parser = new Parser({
@@ -202,13 +231,15 @@ function removeDuplicates(articles: NewsItemWithSource[]): NewsItemWithSource[] 
 }
 
 /**
- * Fetch news from ESPN RSS feed
+ * Fetch news from ESPN RSS feed.
+ * ESPN's RSS doesn't include thumbnails, so we fetch og:image from article pages
+ * in parallel for any items missing an image.
  */
 async function fetchESPNNews(): Promise<NewsItemWithSource[]> {
   try {
     const feed = await parser.parseURL(NEWS_SOURCES.ESPN.rssUrl);
 
-    return feed.items.map((item) => ({
+    const articles = feed.items.map((item) => ({
       id: randomUUID(),
       headline: item.title || 'No title',
       summary: item.contentSnippet || item.content?.slice(0, 300) || '',
@@ -219,6 +250,24 @@ async function fetchESPNNews(): Promise<NewsItemWithSource[]> {
       image_url: extractImageUrl(item),
       teams: matchTeams(item.title || '', item.contentSnippet),
     }));
+
+    // Fetch og:image in parallel for articles missing an image
+    const articlesNeedingImages = articles.filter(a => !a.image_url && a.url);
+    if (articlesNeedingImages.length > 0) {
+      console.log(`Fetching og:image for ${articlesNeedingImages.length} ESPN articles...`);
+      const ogResults = await Promise.allSettled(
+        articlesNeedingImages.map(a => fetchOgImage(a.url))
+      );
+      ogResults.forEach((result, i) => {
+        if (result.status === 'fulfilled' && result.value) {
+          articlesNeedingImages[i].image_url = result.value;
+        }
+      });
+      const found = ogResults.filter(r => r.status === 'fulfilled' && r.value).length;
+      console.log(`Found og:image for ${found}/${articlesNeedingImages.length} ESPN articles`);
+    }
+
+    return articles;
   } catch (error) {
     console.error('Error fetching ESPN news:', error);
     return [];
