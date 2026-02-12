@@ -34,11 +34,67 @@ const BETTING_KEYWORDS = [
 ];
 
 /**
+ * Non-NBA URL path segments to block from CBS Sports.
+ * If a CBS Sports article URL contains any of these, it's from another sport's section.
+ */
+const BLOCKED_CBS_PATH_SEGMENTS = [
+  '/olympics/',
+  '/nfl/',
+  '/mlb/',
+  '/nhl/',
+  '/college-basketball/',
+  '/college-football/',
+  '/golf/',
+  '/soccer/',
+  '/tennis/',
+  '/boxing/',
+  '/mma/',
+  '/racing/',
+  '/fantasy/',
+  '/what-to-watch/',
+];
+
+/**
+ * Non-NBA keywords to filter out articles about other sports.
+ * Checked against title and description.
+ */
+const NON_NBA_KEYWORDS = [
+  'nfl mock draft',
+  'mock draft',
+  'nfl draft',
+  'nfl free agency',
+  'winter olympics',
+  'summer olympics',
+  'super bowl',
+  'world series',
+  'stanley cup',
+  'college football playoff',
+];
+
+/**
  * Check if an article is betting/gambling content based on title and description.
  */
 function isBettingContent(title: string, description: string): boolean {
   const text = `${title} ${description}`.toLowerCase();
   return BETTING_KEYWORDS.some(keyword => text.includes(keyword));
+}
+
+/**
+ * Check if an article is from a non-NBA sport section (URL path) or
+ * contains non-NBA keywords in the title/description.
+ */
+function isNonNbaContent(url: string, title: string, description: string): boolean {
+  const lowerUrl = url.toLowerCase();
+  const text = `${title} ${description}`.toLowerCase();
+
+  // Block CBS Sports articles from non-NBA sport sections
+  if (lowerUrl.includes('cbssports.com')) {
+    const hasBlockedPath = BLOCKED_CBS_PATH_SEGMENTS.some(seg => lowerUrl.includes(seg));
+    if (hasBlockedPath) return true;
+  }
+
+  // Block articles matching non-NBA keywords in title/description
+  return NON_NBA_KEYWORDS.some(keyword => text.includes(keyword));
 }
 
 const OG_IMAGE_TIMEOUT_MS = 5000;
@@ -322,15 +378,25 @@ export async function fetchAllNews(): Promise<Partial<NewsItem>[]> {
     }
   });
 
+  // Filter out non-NBA content (other sports sections, roundups)
+  const nbaOnly = allNews.filter(article => {
+    const isNonNba = isNonNbaContent(article.url || '', article.headline || '', article.summary || '');
+    if (isNonNba) {
+      console.log(`Filtered out non-NBA article: "${article.headline}" [${article.source}] (${article.url})`);
+    }
+    return !isNonNba;
+  });
+  console.log(`Filtered out ${allNews.length - nbaOnly.length} non-NBA articles`);
+
   // Filter out betting/gambling content
-  const filteredNews = allNews.filter(article => {
+  const filteredNews = nbaOnly.filter(article => {
     const isBetting = isBettingContent(article.headline || '', article.summary || '');
     if (isBetting) {
       console.log(`Filtered out betting article: "${article.headline}" [${article.source}]`);
     }
     return !isBetting;
   });
-  console.log(`Filtered out ${allNews.length - filteredNews.length} betting articles`);
+  console.log(`Filtered out ${nbaOnly.length - filteredNews.length} betting articles`);
 
   const uniqueNews = removeDuplicates(filteredNews);
   console.log(`Total articles after deduplication: ${uniqueNews.length}`);
