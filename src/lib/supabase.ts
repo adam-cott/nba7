@@ -10,9 +10,10 @@ export const supabase = isSupabaseConfigured()
   : (null as unknown as SupabaseClient);
 
 /** Server-side client (service role key) — for writes that bypass RLS */
-export const supabaseAdmin = isSupabaseConfigured() && supabaseServiceKey
-  ? createClient(supabaseUrl, supabaseServiceKey)
-  : (null as unknown as SupabaseClient);
+export const supabaseAdmin: SupabaseClient | null =
+  isSupabaseConfigured() && supabaseServiceKey
+    ? createClient(supabaseUrl, supabaseServiceKey)
+    : null;
 
 export const TABLES = {
   NEWS_ITEMS: 'news_items',

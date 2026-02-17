@@ -165,12 +165,16 @@ export async function GET(request: NextRequest) {
         }
 
         // Upsert to Supabase (using admin client to bypass RLS)
-        const { error } = await supabaseAdmin
-          .from(TABLES.NEWS_ITEMS)
-          .upsert(newsWithSentiment, { onConflict: 'url' });
+        if (supabaseAdmin) {
+          const { error } = await supabaseAdmin
+            .from(TABLES.NEWS_ITEMS)
+            .upsert(newsWithSentiment, { onConflict: 'url' });
 
-        if (error) {
-          console.error('Error caching news to Supabase:', error);
+          if (error) {
+            console.error('Error caching news to Supabase:', error);
+          }
+        } else {
+          console.warn('supabaseAdmin not configured — skipping cache write');
         }
 
         newsItems = newsWithSentiment;

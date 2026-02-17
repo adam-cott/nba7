@@ -129,7 +129,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    if (isSupabaseConfigured()) {
+    if (isSupabaseConfigured() && supabaseAdmin) {
       // Check if this IP already voted on this poll (admin client to read poll_responses)
       const { data: existingVote } = await supabaseAdmin
         .from(TABLES.POLL_RESPONSES)
