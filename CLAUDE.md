@@ -16,7 +16,7 @@ NBA news aggregator built with Next.js 16 (App Router), React 19, TypeScript, an
 - `src/app/api/news/route.ts` — Main news API (fetching + sentiment pipeline)
 - `src/app/api/polls/route.ts` — Poll fetching and voting
 - `src/components/` — React client components (Header, NewsFeed, NewsCard, TeamFilter, Poll, PollSection, SentimentBadge)
-- `src/lib/` — Core logic (news-fetcher, sentiment, youtube, supabase, constants, types)
+- `src/lib/` — Core logic (news-fetcher, sentiment, youtube, supabase, constants, types). No dead modules (twitter.ts, reddit.ts removed).
 - `supabase/schema.sql` — Database schema (tables, indexes, RLS policies, seed data)
 
 ### Key Files
@@ -32,6 +32,7 @@ NBA news aggregator built with Next.js 16 (App Router), React 19, TypeScript, an
 4. Fuzzy deduplication (Jaccard similarity + entity overlap)
 5. Sentiment analyzed per article (YouTube comments → VADER, with headline fallback)
 6. Results cached in Supabase (15-min news cache, 6-hour sentiment cache)
+7. Writes use `supabaseAdmin` (service role key); reads use `supabase` (anon key)
 
 ### Filtering Pipeline (in order)
 1. **Non-NBA filter** — Blocks articles from /nfl/, /olympics/, /mlb/ etc. URL paths + non-NBA title keywords
@@ -46,9 +47,9 @@ NBA news aggregator built with Next.js 16 (App Router), React 19, TypeScript, an
 ## Environment Variables
 ```
 NEXT_PUBLIC_SUPABASE_URL=       # Supabase project URL
-NEXT_PUBLIC_SUPABASE_ANON_KEY=  # Supabase anon/public key
+NEXT_PUBLIC_SUPABASE_ANON_KEY=  # Supabase anon/public key (reads)
+SUPABASE_SERVICE_ROLE_KEY=      # Supabase service role key (writes — server-side only)
 YOUTUBE_API_KEY=                # Optional — YouTube Data API v3
-OPENAI_API_KEY=                 # Optional — not actively used
 ```
 
 ## Conventions
@@ -59,6 +60,8 @@ OPENAI_API_KEY=                 # Optional — not actively used
 - All components are in `src/components/`, all shared logic in `src/lib/`
 - News source config (RSS URLs, quality bonuses) lives in `src/lib/constants.ts`
 - Database operations check `isSupabaseConfigured()` and fall back to in-memory when not set up
+- Supabase has two clients: `supabase` (anon key, reads) and `supabaseAdmin` (service role key, writes). Both exported from `src/lib/supabase.ts`
+- Poll voting is IP-based (via `x-forwarded-for` header), not session-based
 
 ## Gotchas
 - ESPN RSS doesn't include thumbnails — og:image is fetched from article pages (5s timeout)

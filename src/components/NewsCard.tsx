@@ -3,7 +3,7 @@
  *
  * Displays a single news item with headline, summary, source,
  * timestamp, thumbnail, and sentiment indicator.
- * Source badges are color-coded (ESPN = red, Bleacher Report = blue).
+ * Source badges are color-coded (ESPN = red, CBS Sports = blue).
  */
 
 'use client';
@@ -132,6 +132,7 @@ export default function NewsCard({ item }: NewsCardProps) {
               <SentimentBadge
                 label={item.sentiment_label}
                 breakdown={item.sentiment_breakdown}
+                sentimentSource={item.sentiment_source}
                 showBreakdown={false}
                 size="sm"
               />

@@ -9,7 +9,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { supabase, isSupabaseConfigured, TABLES } from '@/lib/supabase';
+import { supabase, supabaseAdmin, isSupabaseConfigured, TABLES } from '@/lib/supabase';
 import { Poll, PollOption } from '@/lib/types';
 
 // In-memory polls for when Supabase is not configured
@@ -130,8 +130,8 @@ export async function POST(request: NextRequest) {
     }
 
     if (isSupabaseConfigured()) {
-      // Check if this IP already voted on this poll
-      const { data: existingVote } = await supabase
+      // Check if this IP already voted on this poll (admin client to read poll_responses)
+      const { data: existingVote } = await supabaseAdmin
         .from(TABLES.POLL_RESPONSES)
         .select('id')
         .eq('poll_id', pollId)
@@ -170,13 +170,13 @@ export async function POST(request: NextRequest) {
 
       options[optionIndex].votes += 1;
 
-      // Update poll and record vote
+      // Update poll and record vote (admin client to bypass RLS)
       const [updateResult, insertResult] = await Promise.all([
-        supabase
+        supabaseAdmin
           .from(TABLES.POLLS)
           .update({ options })
           .eq('id', pollId),
-        supabase
+        supabaseAdmin
           .from(TABLES.POLL_RESPONSES)
           .insert({
             poll_id: pollId,

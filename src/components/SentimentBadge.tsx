@@ -14,6 +14,7 @@ import { SentimentLabel, SentimentBreakdown } from '@/lib/types';
 interface SentimentBadgeProps {
   label: SentimentLabel;
   breakdown?: SentimentBreakdown;
+  sentimentSource?: string;
   showBreakdown?: boolean;
   size?: 'sm' | 'md' | 'lg';
 }
@@ -51,6 +52,7 @@ const SENTIMENT_CONFIG = {
 export default function SentimentBadge({
   label,
   breakdown,
+  sentimentSource,
   showBreakdown = false,
   size = 'md',
 }: SentimentBadgeProps) {
@@ -84,7 +86,7 @@ export default function SentimentBadge({
 
       {/* Tooltip with breakdown — centered above the badge */}
       {showTooltip && breakdown && (
-        <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 z-50 animate-in fade-in duration-150">
+        <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 z-50">
           <div className="bg-gray-900 text-white text-xs rounded-lg px-3 py-2 shadow-lg w-[180px]">
             <p className="font-medium mb-2">{config.description}</p>
 
@@ -125,7 +127,9 @@ export default function SentimentBadge({
             </div>
 
             <p className="text-gray-400 text-[10px] mt-2">
-              Based on YouTube fan comments
+              {sentimentSource === 'youtube'
+                ? 'Based on YouTube fan comments'
+                : 'Based on headline analysis'}
             </p>
 
             {/* Tooltip arrow — centered */}

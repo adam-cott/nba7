@@ -14,7 +14,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { fetchAllNews, filterNewsByTeam } from '@/lib/news-fetcher';
 import { analyzeSentiment, analyzeMultipleSentiments } from '@/lib/sentiment';
 import { fetchYouTubeComments, extractKeywords } from '@/lib/youtube';
-import { supabase, isSupabaseConfigured, TABLES } from '@/lib/supabase';
+import { supabase, supabaseAdmin, isSupabaseConfigured, TABLES } from '@/lib/supabase';
 import { NewsItem } from '@/lib/types';
 import { CACHE_DURATION, SENTIMENT_CACHE_HOURS } from '@/lib/constants';
 
@@ -85,8 +85,8 @@ export async function GET(request: NextRequest) {
           .limit(50);
 
         if (cachedNews && cachedNews.length > 0) {
-          const oldestItem = cachedNews[cachedNews.length - 1];
-          const cacheAge = now - new Date(oldestItem.created_at).getTime();
+          const newestItem = cachedNews[0];
+          const cacheAge = now - new Date(newestItem.created_at).getTime();
 
           if (cacheAge < CACHE_DURATION.NEWS) {
             newsItems = cachedNews as NewsItem[];
@@ -164,8 +164,8 @@ export async function GET(request: NextRequest) {
           }
         }
 
-        // Upsert to Supabase
-        const { error } = await supabase
+        // Upsert to Supabase (using admin client to bypass RLS)
+        const { error } = await supabaseAdmin
           .from(TABLES.NEWS_ITEMS)
           .upsert(newsWithSentiment, { onConflict: 'url' });
 

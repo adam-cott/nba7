@@ -69,14 +69,6 @@ export default function NewsFeed({ initialTeam = 'ALL' }: NewsFeedProps) {
     fetchNews(true);
   }, [fetchNews]);
 
-  // Expose refresh function to parent via window for Header to access
-  useEffect(() => {
-    (window as unknown as { refreshNews?: () => void }).refreshNews = handleRefresh;
-    return () => {
-      delete (window as unknown as { refreshNews?: () => void }).refreshNews;
-    };
-  }, [handleRefresh]);
-
   return (
     <div className="space-y-6">
       {/* Filter section */}

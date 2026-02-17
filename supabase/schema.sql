@@ -76,10 +76,10 @@ CREATE POLICY "News items are viewable by everyone" ON news_items
 
 -- News items: Only service role can insert/update (server-side only)
 CREATE POLICY "News items are insertable by service role" ON news_items
-  FOR INSERT WITH CHECK (true);
+  FOR INSERT WITH CHECK (auth.role() = 'service_role');
 
 CREATE POLICY "News items are updatable by service role" ON news_items
-  FOR UPDATE USING (true);
+  FOR UPDATE USING (auth.role() = 'service_role');
 
 -- Polls: Anyone can read active polls
 CREATE POLICY "Polls are viewable by everyone" ON polls
@@ -87,18 +87,18 @@ CREATE POLICY "Polls are viewable by everyone" ON polls
 
 -- Polls: Only service role can create/update polls
 CREATE POLICY "Polls are insertable by service role" ON polls
-  FOR INSERT WITH CHECK (true);
+  FOR INSERT WITH CHECK (auth.role() = 'service_role');
 
 CREATE POLICY "Polls are updatable by service role" ON polls
-  FOR UPDATE USING (true);
+  FOR UPDATE USING (auth.role() = 'service_role');
 
--- Poll responses: Anyone can insert (vote)
-CREATE POLICY "Poll responses are insertable by everyone" ON poll_responses
-  FOR INSERT WITH CHECK (true);
+-- Poll responses: Only service role can insert (votes go through API)
+CREATE POLICY "Poll responses are insertable by service role" ON poll_responses
+  FOR INSERT WITH CHECK (auth.role() = 'service_role');
 
--- Poll responses: Only readable by service role (for vote counting)
+-- Poll responses: Only service role can read (for vote checking)
 CREATE POLICY "Poll responses are viewable by service role" ON poll_responses
-  FOR SELECT USING (true);
+  FOR SELECT USING (auth.role() = 'service_role');
 
 -- Sample data: Insert initial polls (all votes start at 0)
 INSERT INTO polls (question, options, event_context, active) VALUES
