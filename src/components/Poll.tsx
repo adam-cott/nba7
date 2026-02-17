@@ -3,7 +3,8 @@
  *
  * Displays a poll with voting functionality.
  * Shows live results after voting and unlocks an insight.
- * Uses localStorage to track votes without authentication.
+ * Duplicate votes are prevented server-side by IP address.
+ * LocalStorage is used only to remember the UI state (which option was selected).
  */
 
 'use client';
@@ -16,27 +17,15 @@ interface PollProps {
   onVote?: (pollId: string, optionIndex: number) => void;
 }
 
-// Generate or retrieve session ID for vote tracking
-function getSessionId(): string {
-  if (typeof window === 'undefined') return '';
-
-  let sessionId = localStorage.getItem('nba_poll_session');
-  if (!sessionId) {
-    sessionId = `session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-    localStorage.setItem('nba_poll_session', sessionId);
-  }
-  return sessionId;
-}
-
-// Check if user has voted on a poll
-function hasVoted(pollId: string): boolean {
+// Check if user has voted on a poll (local UI state only)
+function hasVotedLocally(pollId: string): boolean {
   if (typeof window === 'undefined') return false;
   const votes = JSON.parse(localStorage.getItem('nba_poll_votes') || '{}');
-  return !!votes[pollId];
+  return !!votes[pollId] && votes[pollId] !== undefined;
 }
 
-// Record that user has voted
-function recordVote(pollId: string, optionIndex: number): void {
+// Record vote in localStorage (for UI state persistence across page reloads)
+function recordVoteLocally(pollId: string, optionIndex: number): void {
   if (typeof window === 'undefined') return;
   const votes = JSON.parse(localStorage.getItem('nba_poll_votes') || '{}');
   votes[pollId] = optionIndex;
@@ -50,9 +39,9 @@ export default function Poll({ poll, onVote }: PollProps) {
   const [insight, setInsight] = useState<string | null>(null);
   const [localPoll, setLocalPoll] = useState(poll);
 
-  // Check vote status on mount
+  // Check vote status on mount (from localStorage UI state)
   useEffect(() => {
-    const voted = hasVoted(poll.id);
+    const voted = hasVotedLocally(poll.id);
     setHasUserVoted(voted);
     if (voted) {
       const votes = JSON.parse(localStorage.getItem('nba_poll_votes') || '{}');
@@ -73,33 +62,30 @@ export default function Poll({ poll, onVote }: PollProps) {
     setSelectedOption(optionIndex);
 
     try {
-      const sessionId = getSessionId();
       const response = await fetch('/api/polls', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           pollId: poll.id,
           optionIndex,
-          sessionId,
         }),
       });
 
       const data = await response.json();
 
       if (response.ok && data.success) {
-        recordVote(poll.id, optionIndex);
+        recordVoteLocally(poll.id, optionIndex);
         setHasUserVoted(true);
         setLocalPoll(data.poll);
         setInsight(data.insight);
         onVote?.(poll.id, optionIndex);
       } else if (data.alreadyVoted) {
-        recordVote(poll.id, optionIndex);
+        recordVoteLocally(poll.id, optionIndex);
         setHasUserVoted(true);
       }
     } catch (error) {
       console.error('Error submitting vote:', error);
-      // Still mark as voted locally to prevent spam
-      recordVote(poll.id, optionIndex);
+      recordVoteLocally(poll.id, optionIndex);
       setHasUserVoted(true);
     } finally {
       setIsSubmitting(false);

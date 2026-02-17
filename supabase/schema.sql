@@ -49,20 +49,20 @@ CREATE TABLE IF NOT EXISTS polls (
 CREATE INDEX IF NOT EXISTS idx_polls_active ON polls(active) WHERE active = TRUE;
 
 -- Poll responses table
--- Tracks individual votes (for preventing duplicate votes)
+-- Tracks individual votes (for preventing duplicate votes by IP)
 CREATE TABLE IF NOT EXISTS poll_responses (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   poll_id UUID NOT NULL REFERENCES polls(id) ON DELETE CASCADE,
   option_index INTEGER NOT NULL,
-  session_id TEXT NOT NULL, -- Client-side session identifier
+  ip_address TEXT NOT NULL, -- Voter IP address for duplicate prevention
   created_at TIMESTAMPTZ DEFAULT NOW(),
 
-  -- Prevent duplicate votes from same session
-  UNIQUE(poll_id, session_id)
+  -- Prevent duplicate votes from same IP
+  UNIQUE(poll_id, ip_address)
 );
 
 -- Create index for checking existing votes
-CREATE INDEX IF NOT EXISTS idx_poll_responses_lookup ON poll_responses(poll_id, session_id);
+CREATE INDEX IF NOT EXISTS idx_poll_responses_lookup ON poll_responses(poll_id, ip_address);
 
 -- Row Level Security (RLS) Policies
 -- Enable RLS on all tables
@@ -100,18 +100,30 @@ CREATE POLICY "Poll responses are insertable by everyone" ON poll_responses
 CREATE POLICY "Poll responses are viewable by service role" ON poll_responses
   FOR SELECT USING (true);
 
--- Sample data: Insert some initial polls
+-- Sample data: Insert initial polls (all votes start at 0)
 INSERT INTO polls (question, options, event_context, active) VALUES
 (
-  'Who will win MVP this season?',
-  '[{"text": "Nikola Jokic", "votes": 245}, {"text": "Luka Doncic", "votes": 189}, {"text": "Shai Gilgeous-Alexander", "votes": 156}, {"text": "Jayson Tatum", "votes": 98}]',
-  '2024-25 NBA MVP Race',
+  'Who wins the 2025-26 NBA MVP?',
+  '[{"text": "Shai Gilgeous-Alexander", "votes": 0}, {"text": "Cade Cunningham", "votes": 0}, {"text": "Nikola Jokic", "votes": 0}, {"text": "Victor Wembanyama", "votes": 0}]',
+  '2025-26 NBA MVP Race',
   true
 ),
 (
-  'Which team will win the NBA Championship?',
-  '[{"text": "Boston Celtics", "votes": 312}, {"text": "Oklahoma City Thunder", "votes": 287}, {"text": "Denver Nuggets", "votes": 198}, {"text": "Cleveland Cavaliers", "votes": 145}]',
-  '2024-25 Championship Predictions',
+  'Who wins 2025-26 Rookie of the Year?',
+  '[{"text": "Cooper Flagg", "votes": 0}, {"text": "Ace Bailey", "votes": 0}, {"text": "Dylan Harper", "votes": 0}, {"text": "Kon Knueppel", "votes": 0}, {"text": "Someone else", "votes": 0}]',
+  '2025-26 Rookie of the Year',
+  true
+),
+(
+  'Are the Detroit Pistons a legitimate championship contender?',
+  '[{"text": "Yes, they''re for real", "votes": 0}, {"text": "No, they''ll fold in the playoffs", "votes": 0}, {"text": "Ask me in April", "votes": 0}]',
+  '2025-26 Pistons Contender Debate',
+  true
+),
+(
+  'Who finishes as the 2 seed in the West?',
+  '[{"text": "Oklahoma City Thunder", "votes": 0}, {"text": "San Antonio Spurs", "votes": 0}, {"text": "Denver Nuggets", "votes": 0}, {"text": "Houston Rockets", "votes": 0}, {"text": "Minnesota Timberwolves", "votes": 0}]',
+  '2025-26 Western Conference Race',
   true
 );
 
