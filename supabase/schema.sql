@@ -11,6 +11,7 @@ CREATE TABLE IF NOT EXISTS news_items (
   headline TEXT NOT NULL,
   summary TEXT,
   source TEXT NOT NULL,
+  source_id TEXT, -- Source identifier (e.g., 'espn', 'cbs-sports')
   url TEXT UNIQUE NOT NULL,
   published_at TIMESTAMPTZ NOT NULL,
   image_url TEXT,
@@ -18,6 +19,9 @@ CREATE TABLE IF NOT EXISTS news_items (
   sentiment_score NUMERIC, -- Score from -1 (negative) to 1 (positive)
   sentiment_label TEXT CHECK (sentiment_label IN ('positive', 'neutral', 'negative')),
   sentiment_breakdown JSONB, -- { positive: number, neutral: number, negative: number }
+  sentiment_source TEXT, -- Where sentiment came from ('youtube', 'headline', 'fallback')
+  sentiment_comment_count INTEGER DEFAULT 0, -- Number of YouTube comments analyzed
+  sentiment_analyzed_at TIMESTAMPTZ, -- When sentiment was last analyzed
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
