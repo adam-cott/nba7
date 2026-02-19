@@ -1,5 +1,5 @@
 import vader from 'vader-sentiment';
-import { SentimentLabel, SentimentBreakdown } from './types';
+import { SentimentLabel, SentimentBreakdown, YouTubeComment } from './types';
 
 function analyzeWithVADER(text: string): number {
   if (!text || typeof text !== 'string') {
@@ -80,18 +80,20 @@ export async function analyzeSentiment(text: string): Promise<{
   };
 }
 
-export async function analyzeMultipleSentiments(texts: string[]): Promise<{
+export async function analyzeMultipleSentiments(inputs: string[] | YouTubeComment[]): Promise<{
   overall: { score: number; label: SentimentLabel; emoji: string };
   breakdown: SentimentBreakdown;
   commentCount: number;
 }> {
-  if (!texts || texts.length === 0) {
+  if (!inputs || inputs.length === 0) {
     return {
       overall: { label: 'neutral', emoji: '🟡', score: 0 },
       breakdown: { positive: 0, neutral: 100, negative: 0 },
       commentCount: 0,
     };
   }
+
+  const texts = inputs.map(t => typeof t === 'string' ? t : t.text);
 
   const sentiments = texts.map(text => {
     const score = analyzeWithVADER(text);

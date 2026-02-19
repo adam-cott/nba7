@@ -138,3 +138,37 @@ $$ LANGUAGE plpgsql;
 
 -- Optional: Create a scheduled job to run cleanup (requires pg_cron extension)
 -- SELECT cron.schedule('cleanup-old-news', '0 0 * * *', 'SELECT cleanup_old_news();');
+
+-- Article comments table
+-- Stores YouTube comments for each article (top 10 per article)
+-- Comments are fetched during the sentiment analysis pipeline — no extra API calls
+CREATE TABLE IF NOT EXISTS article_comments (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  article_url TEXT NOT NULL REFERENCES news_items(url) ON DELETE CASCADE,
+  comment_text TEXT NOT NULL,
+  author_name TEXT NOT NULL DEFAULT 'Anonymous',
+  published_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  like_count INTEGER DEFAULT 0,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Index for fetching comments by article URL
+CREATE INDEX IF NOT EXISTS idx_article_comments_url ON article_comments(article_url);
+
+-- Index for ordering by likes within an article
+CREATE INDEX IF NOT EXISTS idx_article_comments_likes ON article_comments(article_url, like_count DESC);
+
+-- Row Level Security for article_comments
+ALTER TABLE article_comments ENABLE ROW LEVEL SECURITY;
+
+-- Anyone can read comments
+CREATE POLICY "Article comments are viewable by everyone" ON article_comments
+  FOR SELECT USING (true);
+
+-- Only service role can insert comments (server-side only)
+CREATE POLICY "Article comments are insertable by service role" ON article_comments
+  FOR INSERT WITH CHECK (auth.role() = 'service_role');
+
+-- Only service role can delete comments (for re-fetch cleanup)
+CREATE POLICY "Article comments are deletable by service role" ON article_comments
+  FOR DELETE USING (auth.role() = 'service_role');

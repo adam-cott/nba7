@@ -6,6 +6,7 @@
  */
 
 import { google } from 'googleapis';
+import { YouTubeComment } from './types';
 
 const youtube = process.env.YOUTUBE_API_KEY
   ? google.youtube({
@@ -19,7 +20,7 @@ const youtube = process.env.YOUTUBE_API_KEY
  * @param searchQuery - Keywords from the article headline
  * @returns Array of comment texts for sentiment analysis
  */
-export async function fetchYouTubeComments(searchQuery: string): Promise<string[]> {
+export async function fetchYouTubeComments(searchQuery: string): Promise<YouTubeComment[]> {
   if (!youtube) {
     console.log('YouTube API not configured, skipping comment fetch');
     return [];
@@ -64,10 +65,21 @@ export async function fetchYouTubeComments(searchQuery: string): Promise<string[
       return [];
     }
 
-    // Step 3: Extract and clean comment text
-    const comments = commentThreads
-      .map((thread) => thread.snippet?.topLevelComment?.snippet?.textDisplay || '')
-      .filter((text) => text.length > 10 && text.length < 500)
+    // Step 3: Extract comment text + metadata (author, timestamp, likes)
+    const comments: YouTubeComment[] = commentThreads
+      .map((thread) => {
+        const snippet = thread.snippet?.topLevelComment?.snippet;
+        if (!snippet?.textDisplay) return null;
+        const text = snippet.textDisplay;
+        if (text.length <= 10 || text.length >= 500) return null;
+        return {
+          text,
+          author: snippet.authorDisplayName || 'Anonymous',
+          publishedAt: snippet.publishedAt || new Date().toISOString(),
+          likeCount: snippet.likeCount || 0,
+        };
+      })
+      .filter((c): c is YouTubeComment => c !== null)
       .slice(0, 25);
 
     console.log(`YouTube: Found ${comments.length} comments for "${searchQuery}"`);

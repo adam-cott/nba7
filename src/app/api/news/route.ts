@@ -24,13 +24,43 @@ let memoryCache: {
   lastUpdated: number;
 } | null = null;
 
-async function analyzeNewsItemSentiment(headline: string, summary: string) {
+async function analyzeNewsItemSentiment(headline: string, summary: string, articleUrl: string) {
   try {
     const searchQuery = extractKeywords(headline);
     const comments = await fetchYouTubeComments(searchQuery);
 
     if (comments.length > 0) {
       const analysis = await analyzeMultipleSentiments(comments);
+
+      // Store top 10 comments in article_comments table
+      if (supabaseAdmin && articleUrl) {
+        const top10 = [...comments]
+          .sort((a, b) => b.likeCount - a.likeCount)
+          .slice(0, 10);
+
+        // Delete existing comments for this article (handles re-fetch)
+        await supabaseAdmin
+          .from(TABLES.ARTICLE_COMMENTS)
+          .delete()
+          .eq('article_url', articleUrl);
+
+        const rows = top10.map(c => ({
+          article_url: articleUrl,
+          comment_text: c.text,
+          author_name: c.author,
+          published_at: c.publishedAt,
+          like_count: c.likeCount,
+        }));
+
+        const { error } = await supabaseAdmin
+          .from(TABLES.ARTICLE_COMMENTS)
+          .insert(rows);
+
+        if (error) {
+          console.error('Error storing comments:', error);
+        }
+      }
+
       return {
         score: analysis.overall.score,
         label: analysis.overall.label,
@@ -143,7 +173,8 @@ export async function GET(request: NextRequest) {
             // Cache miss or stale — analyze fresh via YouTube
             const sentiment = await analyzeNewsItemSentiment(
               item.headline || '',
-              item.summary || ''
+              item.summary || '',
+              item.url || ''
             );
 
             newsWithSentiment.push({
@@ -200,7 +231,8 @@ export async function GET(request: NextRequest) {
           const item = freshNews[i];
           const sentiment = await analyzeNewsItemSentiment(
             item.headline || '',
-            item.summary || ''
+            item.summary || '',
+            item.url || ''
           );
 
           newsWithSentiment.push({

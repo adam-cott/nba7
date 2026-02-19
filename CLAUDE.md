@@ -13,17 +13,56 @@ NBA news aggregator built with Next.js 16 (App Router), React 19, TypeScript, an
 
 ### Directory Structure
 - `src/app/` — Next.js App Router pages and API routes
-- `src/app/api/news/route.ts` — Main news API (fetching + sentiment pipeline)
+- `src/app/api/news/route.ts` — Main news API (fetching + sentiment pipeline + comment storage)
 - `src/app/api/polls/route.ts` — Poll fetching and voting
-- `src/components/` — React client components (Header, NewsFeed, NewsCard, TeamFilter, Poll, PollSection, SentimentBadge)
-- `src/lib/` — Core logic (news-fetcher, sentiment, youtube, supabase, constants, types). No dead modules (twitter.ts, reddit.ts removed).
+- `src/app/api/comments/route.ts` — Cache-only YouTube comment reads from Supabase
+- `src/app/polls/page.tsx` — Dedicated polls page
+- `src/components/` — React client components
+- `src/lib/` — Core logic (news-fetcher, sentiment, youtube, supabase, constants, types)
 - `supabase/schema.sql` — Database schema (tables, indexes, RLS policies, seed data)
+
+### UI Layout (v2 — Hero + Comments)
+The main page uses a two-section layout:
+
+**Hero Section** (top):
+- Left 60% (`lg:col-span-3`): `HeroArticle` — large featured article with image, headline, summary, sentiment badge
+- Right 40% (`lg:col-span-2`): `HeroComments` — 5-6 cached YouTube comments for the hero article
+
+**Grid Section** (bottom, "More Stories"):
+- Left 60%: `ArticleGrid` → `ArticleCard` — clickable cards (click selects, does NOT navigate)
+- Right 40%: `ArticleComments` — interactive comment viewer for the selected grid article
+- Comment sidebar is `lg:sticky lg:top-24`
+
+**Hero Scoring Algorithm** (`calculateHeroScore()` in NewsFeed.tsx):
+- Recency (dominant): `max(0, 100 - ageHours * 5) * 100` — decays 5 pts/hour
+- Sentiment strength: `|sentiment_score| * 100 * 30`
+- Engagement: `min(sentiment_comment_count, 30) * 20`
+- Has image: +15 points
+- Star player in headline: +10 points
+- Team filter match: 1.5x multiplier
+- Recalculates via `useMemo([news, selectedTeam])` on page load AND team filter change
+
+**Mobile**: All grids stack vertically below `lg:` breakpoint (1024px)
+
+### Components
+- `Header` — Shared header (rendered in root layout) with News/Polls navigation, active page indicator
+- `NewsFeed` — Layout orchestrator: hero scoring, article/comment state management, comment fetching
+- `HeroArticle` — Featured article display (large image, headline, sentiment)
+- `HeroComments` — Hero article YouTube comments (5-6 shown, loading skeleton, empty fallback)
+- `ArticleGrid` — Responsive grid of ArticleCard components
+- `ArticleCard` — Clickable news card (blue border when selected, "click to see reactions" hint)
+- `ArticleComments` — Interactive comment viewer (3 states: no selection, no comments, has comments)
+- `TeamFilter` — Team dropdown filter
+- `SentimentBadge` — Sentiment label with tooltip breakdown
+- `PollSection` / `Poll` — Fan polls (now on /polls route)
+- `NewsCard` — Legacy card component (kept, not used in v2 layout)
 
 ### Key Files
 - `src/lib/news-fetcher.ts` — RSS ingestion, filtering pipeline, fuzzy deduplication
 - `src/lib/sentiment.ts` — VADER sentiment analysis with percentage normalization
-- `src/lib/youtube.ts` — YouTube Data API search + comment fetching for sentiment
+- `src/lib/youtube.ts` — YouTube Data API search + comment fetching (returns `YouTubeComment[]`)
 - `src/lib/constants.ts` — NBA teams, team keywords, news source config, cache durations
+- `src/lib/types.ts` — TypeScript interfaces including `NewsItem`, `YouTubeComment`, `ArticleComment`
 
 ### Data Flow
 1. RSS feeds fetched in parallel (ESPN + CBS Sports)
@@ -31,8 +70,17 @@ NBA news aggregator built with Next.js 16 (App Router), React 19, TypeScript, an
 3. Betting/gambling content filtered
 4. Fuzzy deduplication (Jaccard similarity + entity overlap)
 5. Sentiment analyzed per article (YouTube comments → VADER, with headline fallback)
-6. Results cached in Supabase (15-min news cache, 6-hour sentiment cache)
-7. Writes use `supabaseAdmin` (service role key); reads use `supabase` (anon key)
+6. Top 10 YouTube comments (by likes) stored in `article_comments` table during sentiment pipeline
+7. Results cached in Supabase (15-min news cache, 6-hour sentiment cache)
+8. Writes use `supabaseAdmin` (service role key); reads use `supabase` (anon key)
+
+### Comment Storage Pipeline
+- During sentiment analysis, `fetchYouTubeComments()` returns `YouTubeComment[]` with `text`, `author`, `publishedAt`, `likeCount`
+- `analyzeNewsItemSentiment()` stores top 10 comments (sorted by likes) in `article_comments` table
+- Existing comments for that URL are deleted first (handles re-fetch)
+- Comments only stored when sentiment is fresh (not from 6-hour cache) — no extra YouTube API calls
+- `/api/comments?url=` is cache-only: reads from Supabase, never calls YouTube
+- `article_comments` has `ON DELETE CASCADE` on foreign key to `news_items(url)` — safe with cleanup function
 
 ### Filtering Pipeline (in order)
 1. **Non-NBA filter** — Blocks articles from /nfl/, /olympics/, /mlb/ etc. URL paths + non-NBA title keywords
@@ -43,6 +91,13 @@ NBA news aggregator built with Next.js 16 (App Router), React 19, TypeScript, an
 - VADER compound score thresholds: >= 0.05 positive, <= -0.05 negative, else neutral
 - YouTube keyword extraction prioritizes proper nouns (player/team names), max 4 terms
 - Percentages always sum to 100% via `normalizePercentages()` rounding correction
+
+## Routes
+- `/` — Home page (hero + grid news layout with fan comments)
+- `/polls` — Fan polls page
+- `/api/news` — News API with sentiment pipeline
+- `/api/polls` — Poll API (fetch + vote)
+- `/api/comments` — Cache-only YouTube comment reads
 
 ## Environment Variables
 ```
@@ -60,8 +115,13 @@ YOUTUBE_API_KEY=                # Optional — YouTube Data API v3
 - All components are in `src/components/`, all shared logic in `src/lib/`
 - News source config (RSS URLs, quality bonuses) lives in `src/lib/constants.ts`
 - Database operations check `isSupabaseConfigured()` and fall back to in-memory when not set up
-- Supabase has two clients: `supabase` (anon key, reads) and `supabaseAdmin` (service role key, writes). Both exported from `src/lib/supabase.ts`
+- Supabase has two clients: `supabase` (anon key, reads) and `supabaseAdmin` (service role key, writes). Both exported from `src/lib/supabase.ts`. `supabaseAdmin` is nullable (`SupabaseClient | null`) — always guard with `if (supabaseAdmin)`.
 - Poll voting is IP-based (via `x-forwarded-for` header), not session-based
+
+## Database Tables
+- `news_items` — Cached news articles with sentiment data
+- `poll_questions` / `poll_options` / `poll_votes` — Fan polls with IP-based voting
+- `article_comments` — Cached YouTube comments per article (ON DELETE CASCADE to news_items)
 
 ## Gotchas
 - ESPN RSS doesn't include thumbnails — og:image is fetched from article pages (5s timeout)
@@ -69,3 +129,4 @@ YOUTUBE_API_KEY=                # Optional — YouTube Data API v3
 - "odds" and "picks" in betting filter are intentionally specific ("betting odds", "expert picks") to avoid filtering legitimate NBA content
 - The `overflow-hidden` was removed from NewsCard's `<article>` element so the sentiment tooltip can render outside card bounds
 - Mock draft filter only blocks "nfl mock draft", "mlb mock draft", "nhl mock draft" — NBA mock drafts are kept
+- `supabaseAdmin` can be null if `SUPABASE_SERVICE_ROLE_KEY` is not set — all write operations must be guarded

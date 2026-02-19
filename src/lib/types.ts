@@ -39,6 +39,23 @@ export interface PollOption {
   votes: number;
 }
 
+export interface YouTubeComment {
+  text: string;
+  author: string;
+  publishedAt: string;
+  likeCount: number;
+}
+
+export interface ArticleComment {
+  id: string;
+  article_url: string;
+  comment_text: string;
+  author_name: string;
+  published_at: string;
+  like_count: number;
+  created_at: string;
+}
+
 export interface NBATeam {
   abbreviation: string;
   name: string;

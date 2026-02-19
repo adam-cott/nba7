@@ -19,6 +19,7 @@ export const TABLES = {
   NEWS_ITEMS: 'news_items',
   POLLS: 'polls',
   POLL_RESPONSES: 'poll_responses',
+  ARTICLE_COMMENTS: 'article_comments',
 } as const;
 
 export function isSupabaseConfigured(): boolean {
