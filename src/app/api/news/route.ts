@@ -15,7 +15,7 @@ import { fetchAllNews, filterNewsByTeam } from '@/lib/news-fetcher';
 import { analyzeSentiment, analyzeMultipleSentiments } from '@/lib/sentiment';
 import { fetchYouTubeComments, extractKeywords } from '@/lib/youtube';
 import { supabase, supabaseAdmin, isSupabaseConfigured, TABLES } from '@/lib/supabase';
-import { NewsItem } from '@/lib/types';
+import { NewsItem, YouTubeComment } from '@/lib/types';
 import { CACHE_DURATION, SENTIMENT_CACHE_HOURS } from '@/lib/constants';
 
 // In-memory cache for when Supabase is not configured
@@ -24,7 +24,7 @@ let memoryCache: {
   lastUpdated: number;
 } | null = null;
 
-async function analyzeNewsItemSentiment(headline: string, summary: string, articleUrl: string) {
+async function analyzeNewsItemSentiment(headline: string, summary: string) {
   try {
     const searchQuery = extractKeywords(headline);
     const comments = await fetchYouTubeComments(searchQuery);
@@ -32,34 +32,9 @@ async function analyzeNewsItemSentiment(headline: string, summary: string, artic
     if (comments.length > 0) {
       const analysis = await analyzeMultipleSentiments(comments);
 
-      // Store top 10 comments in article_comments table
-      if (supabaseAdmin && articleUrl) {
-        const top10 = [...comments]
-          .sort((a, b) => b.likeCount - a.likeCount)
-          .slice(0, 10);
-
-        // Delete existing comments for this article (handles re-fetch)
-        await supabaseAdmin
-          .from(TABLES.ARTICLE_COMMENTS)
-          .delete()
-          .eq('article_url', articleUrl);
-
-        const rows = top10.map(c => ({
-          article_url: articleUrl,
-          comment_text: c.text,
-          author_name: c.author,
-          published_at: c.publishedAt,
-          like_count: c.likeCount,
-        }));
-
-        const { error } = await supabaseAdmin
-          .from(TABLES.ARTICLE_COMMENTS)
-          .insert(rows);
-
-        if (error) {
-          console.error('Error storing comments:', error);
-        }
-      }
+      const top10 = [...comments]
+        .sort((a, b) => b.likeCount - a.likeCount)
+        .slice(0, 10);
 
       return {
         score: analysis.overall.score,
@@ -68,6 +43,7 @@ async function analyzeNewsItemSentiment(headline: string, summary: string, artic
         breakdown: analysis.breakdown,
         source: 'youtube' as const,
         commentCount: analysis.commentCount,
+        comments: top10,
       };
     }
 
@@ -79,6 +55,7 @@ async function analyzeNewsItemSentiment(headline: string, summary: string, artic
       breakdown: sentiment.breakdown,
       source: 'headline' as const,
       commentCount: 0,
+      comments: [] as YouTubeComment[],
     };
   } catch (error) {
     console.error('Error analyzing sentiment:', error);
@@ -89,6 +66,7 @@ async function analyzeNewsItemSentiment(headline: string, summary: string, artic
       breakdown: { positive: 33, neutral: 34, negative: 33 },
       source: 'fallback' as const,
       commentCount: 0,
+      comments: [] as YouTubeComment[],
     };
   }
 }
@@ -149,6 +127,8 @@ export async function GET(request: NextRequest) {
 
         // Analyze sentiment for each news item, reusing cached sentiment when fresh
         const newsWithSentiment: NewsItem[] = [];
+        // Collect comments to store AFTER news items are upserted (FK constraint)
+        const pendingComments: { url: string; comments: YouTubeComment[] }[] = [];
 
         for (let i = 0; i < freshNews.length; i++) {
           const item = freshNews[i];
@@ -174,7 +154,6 @@ export async function GET(request: NextRequest) {
             const sentiment = await analyzeNewsItemSentiment(
               item.headline || '',
               item.summary || '',
-              item.url || ''
             );
 
             newsWithSentiment.push({
@@ -188,6 +167,10 @@ export async function GET(request: NextRequest) {
               created_at: new Date().toISOString(),
             } as NewsItem);
 
+            if (sentiment.comments.length > 0 && item.url) {
+              pendingComments.push({ url: item.url, comments: sentiment.comments });
+            }
+
             // Small delay between YouTube API calls to respect rate limits
             if (i < freshNews.length - 1 && sentiment.source === 'youtube') {
               await new Promise(resolve => setTimeout(resolve, 200));
@@ -195,7 +178,7 @@ export async function GET(request: NextRequest) {
           }
         }
 
-        // Upsert to Supabase (using admin client to bypass RLS)
+        // Upsert news items first so FK constraint is satisfied for comment inserts
         if (supabaseAdmin) {
           const { error } = await supabaseAdmin
             .from(TABLES.NEWS_ITEMS)
@@ -203,6 +186,30 @@ export async function GET(request: NextRequest) {
 
           if (error) {
             console.error('Error caching news to Supabase:', error);
+          }
+
+          // Now store comments — parent news_items rows are guaranteed to exist
+          for (const { url, comments } of pendingComments) {
+            await supabaseAdmin
+              .from(TABLES.ARTICLE_COMMENTS)
+              .delete()
+              .eq('article_url', url);
+
+            const rows = comments.map(c => ({
+              article_url: url,
+              comment_text: c.text,
+              author_name: c.author,
+              published_at: c.publishedAt,
+              like_count: c.likeCount,
+            }));
+
+            const { error: commentError } = await supabaseAdmin
+              .from(TABLES.ARTICLE_COMMENTS)
+              .insert(rows);
+
+            if (commentError) {
+              console.error('Error storing comments for', url, commentError);
+            }
           }
         } else {
           console.warn('supabaseAdmin not configured — skipping cache write');
@@ -232,7 +239,6 @@ export async function GET(request: NextRequest) {
           const sentiment = await analyzeNewsItemSentiment(
             item.headline || '',
             item.summary || '',
-            item.url || ''
           );
 
           newsWithSentiment.push({
