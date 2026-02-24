@@ -8,7 +8,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { supabase, isSupabaseConfigured, TABLES } from '@/lib/supabase';
+import { supabaseAdmin, isSupabaseConfigured, TABLES } from '@/lib/supabase';
 import { ArticleComment } from '@/lib/types';
 
 export async function GET(request: NextRequest) {
@@ -23,11 +23,11 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    if (!isSupabaseConfigured()) {
+    if (!isSupabaseConfigured() || !supabaseAdmin) {
       return NextResponse.json({ comments: [] });
     }
 
-    const { data, error } = await supabase
+    const { data, error } = await supabaseAdmin
       .from(TABLES.ARTICLE_COMMENTS)
       .select('*')
       .eq('article_url', articleUrl)
