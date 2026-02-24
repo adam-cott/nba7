@@ -104,7 +104,7 @@ The main page uses a two-section layout:
 NEXT_PUBLIC_SUPABASE_URL=       # Supabase project URL
 NEXT_PUBLIC_SUPABASE_ANON_KEY=  # Supabase anon/public key (reads)
 SUPABASE_SERVICE_ROLE_KEY=      # Supabase service role key (writes — server-side only)
-YOUTUBE_API_KEY=                # Optional — YouTube Data API v3
+YOUTUBE_API_KEY=                # YouTube Data API v3 (required for fan comments)
 ```
 
 ## Conventions
@@ -120,7 +120,7 @@ YOUTUBE_API_KEY=                # Optional — YouTube Data API v3
 
 ## Database Tables
 - `news_items` — Cached news articles with sentiment data
-- `poll_questions` / `poll_options` / `poll_votes` — Fan polls with IP-based voting
+- `polls` / `poll_responses` — Fan polls with IP-based voting
 - `article_comments` — Cached YouTube comments per article (ON DELETE CASCADE to news_items)
 
 ## Gotchas
@@ -130,3 +130,4 @@ YOUTUBE_API_KEY=                # Optional — YouTube Data API v3
 - The `overflow-hidden` was removed from NewsCard's `<article>` element so the sentiment tooltip can render outside card bounds
 - Mock draft filter only blocks "nfl mock draft", "mlb mock draft", "nhl mock draft" — NBA mock drafts are kept
 - `supabaseAdmin` can be null if `SUPABASE_SERVICE_ROLE_KEY` is not set — all write operations must be guarded
+- Comments only populate when sentiment is fetched fresh (not from 6-hour cache). To force re-fetch: run `UPDATE news_items SET sentiment_analyzed_at = NULL;` in Supabase SQL Editor, then refresh the app

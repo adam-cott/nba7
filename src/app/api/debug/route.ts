@@ -1,7 +1,6 @@
 /**
- * Debug endpoint — checks env vars, YouTube API, and Supabase admin.
- * Hit GET /api/debug to diagnose comment pipeline issues.
- * Remove this file once the issue is resolved.
+ * Debug endpoint — checks env vars and Supabase row counts.
+ * Hit GET /api/debug to verify configuration and data state.
  */
 
 import { NextResponse } from 'next/server';
@@ -24,30 +23,7 @@ export async function GET() {
   // 3. Check isSupabaseConfigured
   results.supabaseConfigured = isSupabaseConfigured();
 
-  // 4. Test YouTube API
-  if (!process.env.YOUTUBE_API_KEY) {
-    results.youtube = 'SKIPPED — YOUTUBE_API_KEY not set';
-  } else {
-    try {
-      const { google } = await import('googleapis');
-      const youtube = google.youtube({ version: 'v3', auth: process.env.YOUTUBE_API_KEY });
-      const res = await youtube.search.list({
-        part: ['snippet'],
-        q: 'NBA highlights',
-        type: ['video'],
-        maxResults: 1,
-      });
-      const items = res.data.items;
-      results.youtube = items && items.length > 0
-        ? `OK — found video: "${items[0].snippet?.title}"`
-        : 'OK — but no videos returned';
-    } catch (err: unknown) {
-      const e = err as { code?: number; message?: string };
-      results.youtube = `ERROR ${e.code ?? ''}: ${e.message ?? String(err)}`;
-    }
-  }
-
-  // 5. Test Supabase admin write capability — check comment count
+  // 4. Check Supabase row counts
   if (supabaseAdmin) {
     try {
       const { count, error } = await supabaseAdmin
