@@ -24,10 +24,10 @@ let memoryCache: {
   lastUpdated: number;
 } | null = null;
 
-async function analyzeNewsItemSentiment(headline: string, summary: string) {
+async function analyzeNewsItemSentiment(headline: string, summary: string, teams: string[] = []) {
   try {
-    const searchQuery = extractKeywords(headline);
-    const comments = await fetchYouTubeComments(searchQuery);
+    const searchQuery = extractKeywords(headline, teams);
+    const comments = await fetchYouTubeComments(searchQuery, headline, teams);
 
     if (comments.length > 0) {
       const analysis = await analyzeMultipleSentiments(comments);
@@ -154,6 +154,7 @@ export async function GET(request: NextRequest) {
             const sentiment = await analyzeNewsItemSentiment(
               item.headline || '',
               item.summary || '',
+              item.teams || [],
             );
 
             newsWithSentiment.push({
@@ -239,6 +240,7 @@ export async function GET(request: NextRequest) {
           const sentiment = await analyzeNewsItemSentiment(
             item.headline || '',
             item.summary || '',
+            item.teams || [],
           );
 
           newsWithSentiment.push({
