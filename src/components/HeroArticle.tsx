@@ -27,9 +27,12 @@ function getSourceStyle(sourceId?: string) {
 }
 
 export default function HeroArticle({ article }: HeroArticleProps) {
-  const timeAgo = formatDistanceToNow(new Date(article.published_at), {
-    addSuffix: true,
-  });
+  let timeAgo: string;
+  try {
+    timeAgo = formatDistanceToNow(new Date(article.published_at), { addSuffix: true });
+  } catch {
+    timeAgo = '';
+  }
   const sourceStyle = getSourceStyle(article.source_id);
 
   return (
@@ -42,7 +45,8 @@ export default function HeroArticle({ article }: HeroArticleProps) {
             alt={article.headline}
             className="w-full h-full object-cover"
             onError={(e) => {
-              (e.target as HTMLImageElement).style.display = 'none';
+              const container = (e.target as HTMLImageElement).parentElement;
+              if (container) container.style.display = 'none';
             }}
           />
           <span
