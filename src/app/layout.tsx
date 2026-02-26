@@ -29,6 +29,11 @@ export const metadata: Metadata = {
     description: 'NBA news aggregation with fan sentiment analysis',
     type: 'website',
   },
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: 'black-translucent',
+    title: 'NBA News',
+  },
 };
 
 export default function RootLayout({

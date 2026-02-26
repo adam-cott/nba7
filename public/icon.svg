@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <!-- Blue rounded background -->
+  <rect width="512" height="512" rx="96" fill="#1e3a8a"/>
+  <!-- Basketball (orange circle) -->
+  <circle cx="256" cy="256" r="176" fill="#f97316"/>
+  <!-- Basketball seam lines -->
+  <path d="M256 80 L256 432" stroke="#7c2d12" stroke-width="14" fill="none" stroke-linecap="round"/>
+  <path d="M80 256 L432 256" stroke="#7c2d12" stroke-width="14" fill="none" stroke-linecap="round"/>
+  <path d="M256 80 Q156 256 256 432" stroke="#7c2d12" stroke-width="14" fill="none" stroke-linecap="round"/>
+  <path d="M256 80 Q356 256 256 432" stroke="#7c2d12" stroke-width="14" fill="none" stroke-linecap="round"/>
+  <!-- Circle border -->
+  <circle cx="256" cy="256" r="176" fill="none" stroke="#ea580c" stroke-width="6"/>
+</svg>
