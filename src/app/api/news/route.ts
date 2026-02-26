@@ -24,6 +24,10 @@ let memoryCache: {
   lastUpdated: number;
 } | null = null;
 
+// Max concurrent YouTube API calls — each call is ~1-2 network round-trips,
+// so 4 in parallel cuts wall-clock time ~4x without hammering the quota.
+const SENTIMENT_CONCURRENCY = 4;
+
 async function analyzeNewsItemSentiment(headline: string, summary: string, teams: string[] = []) {
   try {
     const searchQuery = extractKeywords(headline, teams);
@@ -125,11 +129,14 @@ export async function GET(request: NextRequest) {
 
         const sentimentMaxAge = SENTIMENT_CACHE_HOURS * 60 * 60 * 1000;
 
-        // Analyze sentiment for each news item, reusing cached sentiment when fresh
-        const newsWithSentiment: NewsItem[] = [];
+        // Analyze sentiment for each news item, reusing cached sentiment when fresh.
+        // Pre-allocate with index assignment to preserve article order after parallel processing.
+        const newsWithSentiment: NewsItem[] = new Array(freshNews.length);
         // Collect comments to store AFTER news items are upserted (FK constraint)
         const pendingComments: { url: string; comments: YouTubeComment[] }[] = [];
 
+        // First pass: fill in cached items immediately (no YouTube call needed)
+        const staleIndices: number[] = [];
         for (let i = 0; i < freshNews.length; i++) {
           const item = freshNews[i];
           const existing = item.url ? sentimentByUrl.get(item.url) : undefined;
@@ -139,7 +146,7 @@ export async function GET(request: NextRequest) {
           if (hasFreshSentiment) {
             // Reuse cached sentiment — no YouTube API call needed
             console.log(`Using cached sentiment for: ${(item.headline || '').substring(0, 50)}...`);
-            newsWithSentiment.push({
+            newsWithSentiment[i] = {
               ...item,
               sentiment_score: existing.sentiment_score,
               sentiment_label: existing.sentiment_label,
@@ -148,16 +155,29 @@ export async function GET(request: NextRequest) {
               sentiment_comment_count: existing.sentiment_comment_count,
               sentiment_analyzed_at: existing.sentiment_analyzed_at,
               created_at: new Date().toISOString(),
-            } as NewsItem);
+            } as NewsItem;
           } else {
-            // Cache miss or stale — analyze fresh via YouTube
-            const sentiment = await analyzeNewsItemSentiment(
-              item.headline || '',
-              item.summary || '',
-              item.teams || [],
-            );
+            staleIndices.push(i);
+          }
+        }
 
-            newsWithSentiment.push({
+        // Second pass: process stale items in parallel chunks (concurrency cap = SENTIMENT_CONCURRENCY)
+        for (let chunkStart = 0; chunkStart < staleIndices.length; chunkStart += SENTIMENT_CONCURRENCY) {
+          const chunk = staleIndices.slice(chunkStart, chunkStart + SENTIMENT_CONCURRENCY);
+          const results = await Promise.all(
+            chunk.map(async (i) => {
+              const item = freshNews[i];
+              const sentiment = await analyzeNewsItemSentiment(
+                item.headline || '',
+                item.summary || '',
+                item.teams || [],
+              );
+              return { i, item, sentiment };
+            })
+          );
+
+          for (const { i, item, sentiment } of results) {
+            newsWithSentiment[i] = {
               ...item,
               sentiment_score: sentiment.score,
               sentiment_label: sentiment.label,
@@ -166,15 +186,10 @@ export async function GET(request: NextRequest) {
               sentiment_comment_count: sentiment.commentCount,
               sentiment_analyzed_at: new Date().toISOString(),
               created_at: new Date().toISOString(),
-            } as NewsItem);
+            } as NewsItem;
 
             if (sentiment.comments.length > 0 && item.url) {
               pendingComments.push({ url: item.url, comments: sentiment.comments });
-            }
-
-            // Small delay between YouTube API calls to respect rate limits
-            if (i < freshNews.length - 1 && sentiment.source === 'youtube') {
-              await new Promise(resolve => setTimeout(resolve, 200));
             }
           }
         }
@@ -189,29 +204,32 @@ export async function GET(request: NextRequest) {
             console.error('Error caching news to Supabase:', error);
           }
 
-          // Now store comments — parent news_items rows are guaranteed to exist
-          for (const { url, comments } of pendingComments) {
-            await supabaseAdmin
-              .from(TABLES.ARTICLE_COMMENTS)
-              .delete()
-              .eq('article_url', url);
+          // Now store comments in parallel — parent news_items rows are guaranteed to exist
+          const admin = supabaseAdmin;
+          await Promise.all(
+            pendingComments.map(async ({ url, comments }) => {
+              await admin
+                .from(TABLES.ARTICLE_COMMENTS)
+                .delete()
+                .eq('article_url', url);
 
-            const rows = comments.map(c => ({
-              article_url: url,
-              comment_text: c.text,
-              author_name: c.author,
-              published_at: c.publishedAt,
-              like_count: c.likeCount,
-            }));
+              const rows = comments.map(c => ({
+                article_url: url,
+                comment_text: c.text,
+                author_name: c.author,
+                published_at: c.publishedAt,
+                like_count: c.likeCount,
+              }));
 
-            const { error: commentError } = await supabaseAdmin
-              .from(TABLES.ARTICLE_COMMENTS)
-              .insert(rows);
+              const { error: commentError } = await admin
+                .from(TABLES.ARTICLE_COMMENTS)
+                .insert(rows);
 
-            if (commentError) {
-              console.error('Error storing comments for', url, commentError);
-            }
-          }
+              if (commentError) {
+                console.error('Error storing comments for', url, commentError);
+              }
+            })
+          );
         } else {
           console.warn('supabaseAdmin not configured — skipping cache write');
         }
@@ -232,31 +250,33 @@ export async function GET(request: NextRequest) {
       } else {
         const freshNews = await fetchAllNews();
 
-        // Analyze sentiment with YouTube comments
-        const newsWithSentiment: NewsItem[] = [];
+        // Analyze sentiment with YouTube comments (parallel, concurrency cap = SENTIMENT_CONCURRENCY)
+        const newsWithSentiment: NewsItem[] = new Array(freshNews.length);
 
-        for (let i = 0; i < freshNews.length; i++) {
-          const item = freshNews[i];
-          const sentiment = await analyzeNewsItemSentiment(
-            item.headline || '',
-            item.summary || '',
-            item.teams || [],
+        for (let chunkStart = 0; chunkStart < freshNews.length; chunkStart += SENTIMENT_CONCURRENCY) {
+          const chunk = freshNews.slice(chunkStart, chunkStart + SENTIMENT_CONCURRENCY);
+          const results = await Promise.all(
+            chunk.map(async (item, chunkIndex) => {
+              const sentiment = await analyzeNewsItemSentiment(
+                item.headline || '',
+                item.summary || '',
+                item.teams || [],
+              );
+              return { index: chunkStart + chunkIndex, item, sentiment };
+            })
           );
 
-          newsWithSentiment.push({
-            ...item,
-            sentiment_score: sentiment.score,
-            sentiment_label: sentiment.label,
-            sentiment_breakdown: sentiment.breakdown,
-            sentiment_source: sentiment.source,
-            sentiment_comment_count: sentiment.commentCount,
-            sentiment_analyzed_at: new Date().toISOString(),
-            created_at: new Date().toISOString(),
-          } as NewsItem);
-
-          // Small delay between YouTube API calls
-          if (i < freshNews.length - 1 && sentiment.source === 'youtube') {
-            await new Promise(resolve => setTimeout(resolve, 200));
+          for (const { index, item, sentiment } of results) {
+            newsWithSentiment[index] = {
+              ...item,
+              sentiment_score: sentiment.score,
+              sentiment_label: sentiment.label,
+              sentiment_breakdown: sentiment.breakdown,
+              sentiment_source: sentiment.source,
+              sentiment_comment_count: sentiment.commentCount,
+              sentiment_analyzed_at: new Date().toISOString(),
+              created_at: new Date().toISOString(),
+            } as NewsItem;
           }
         }
 
