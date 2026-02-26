@@ -253,6 +253,7 @@ const DEDUP_STOP_WORDS = new Set([
   'this', 'that', 'these', 'those', 'who', 'what', 'when', 'where',
   'how', 'why', 'all', 'each', 'both', 'more', 'most', 'some', 'any',
   'new', 'per', 'via', 'says', 'said', 'just', 'also', 'now',
+  'nba', // ubiquitous on an NBA site — meaningless as a dedup signal
 ]);
 
 const FUZZY_SIMILARITY_THRESHOLD = 0.45;
