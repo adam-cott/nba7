@@ -26,7 +26,7 @@ let memoryCache: {
 
 // Max concurrent YouTube API calls — each call is ~1-2 network round-trips,
 // so 4 in parallel cuts wall-clock time ~4x without hammering the quota.
-const SENTIMENT_CONCURRENCY = 4;
+const SENTIMENT_CONCURRENCY = 6;
 
 async function analyzeNewsItemSentiment(headline: string, summary: string, teams: string[] = []) {
   try {
