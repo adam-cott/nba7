@@ -14,7 +14,6 @@ import { Poll as PollType } from '@/lib/types';
 
 interface PollProps {
   poll: PollType;
-  onVote?: (pollId: string, optionIndex: number) => void;
 }
 
 // Check if user has voted on a poll (local UI state only)
@@ -32,7 +31,7 @@ function recordVoteLocally(pollId: string, optionIndex: number): void {
   localStorage.setItem('nba_poll_votes', JSON.stringify(votes));
 }
 
-export default function Poll({ poll, onVote }: PollProps) {
+export default function Poll({ poll }: PollProps) {
   const [hasUserVoted, setHasUserVoted] = useState(false);
   const [selectedOption, setSelectedOption] = useState<number | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -78,7 +77,6 @@ export default function Poll({ poll, onVote }: PollProps) {
         setHasUserVoted(true);
         setLocalPoll(data.poll);
         setInsight(data.insight);
-        onVote?.(poll.id, optionIndex);
       } else if (data.alreadyVoted) {
         recordVoteLocally(poll.id, optionIndex);
         setHasUserVoted(true);

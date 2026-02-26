@@ -38,11 +38,6 @@ export default function PollSection() {
     fetchPolls();
   }, []);
 
-  // Handle vote callback (could be used for analytics)
-  const handleVote = (pollId: string, optionIndex: number) => {
-    console.log(`Vote recorded: Poll ${pollId}, Option ${optionIndex}`);
-  };
-
   // Loading state
   if (loading) {
     return (
@@ -90,7 +85,7 @@ export default function PollSection() {
     <div className="space-y-4">
       <h2 className="text-lg font-bold text-gray-800">Fan Polls</h2>
       {polls.map((poll) => (
-        <Poll key={poll.id} poll={poll} onVote={handleVote} />
+        <Poll key={poll.id} poll={poll} />
       ))}
     </div>
   );

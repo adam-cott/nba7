@@ -106,7 +106,6 @@ export default function ArticleCard({ article, isSelected, onClick }: ArticleCar
               label={article.sentiment_label}
               breakdown={article.sentiment_breakdown}
               sentimentSource={article.sentiment_source}
-              showBreakdown={false}
               size="sm"
             />
           )}

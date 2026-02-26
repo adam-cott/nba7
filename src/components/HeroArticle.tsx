@@ -103,7 +103,6 @@ export default function HeroArticle({ article }: HeroArticleProps) {
                 label={article.sentiment_label}
                 breakdown={article.sentiment_breakdown}
                 sentimentSource={article.sentiment_source}
-                showBreakdown={false}
                 size="lg"
               />
             )}

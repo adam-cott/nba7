@@ -43,7 +43,6 @@ async function analyzeNewsItemSentiment(headline: string, summary: string, teams
       return {
         score: analysis.overall.score,
         label: analysis.overall.label,
-        emoji: analysis.overall.emoji,
         breakdown: analysis.breakdown,
         source: 'youtube' as const,
         commentCount: analysis.commentCount,
@@ -55,7 +54,6 @@ async function analyzeNewsItemSentiment(headline: string, summary: string, teams
     return {
       score: sentiment.score,
       label: sentiment.label,
-      emoji: sentiment.emoji,
       breakdown: sentiment.breakdown,
       source: 'headline' as const,
       commentCount: 0,
@@ -66,7 +64,6 @@ async function analyzeNewsItemSentiment(headline: string, summary: string, teams
     return {
       score: 0,
       label: 'neutral' as const,
-      emoji: '🟡',
       breakdown: { positive: 33, neutral: 34, negative: 33 },
       source: 'fallback' as const,
       commentCount: 0,

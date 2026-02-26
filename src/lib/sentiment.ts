@@ -15,13 +15,6 @@ function getLabel(score: number): SentimentLabel {
   return 'neutral';
 }
 
-function getEmoji(label: SentimentLabel): string {
-  switch (label) {
-    case 'positive': return '🟢';
-    case 'negative': return '🔴';
-    default: return '🟡';
-  }
-}
 
 /**
  * Ensure three rounded percentages always sum to exactly 100
@@ -67,7 +60,6 @@ function getBreakdown(score: number): SentimentBreakdown {
 export async function analyzeSentiment(text: string): Promise<{
   score: number;
   label: SentimentLabel;
-  emoji: string;
   breakdown: SentimentBreakdown;
 }> {
   const score = analyzeWithVADER(text);
@@ -75,13 +67,12 @@ export async function analyzeSentiment(text: string): Promise<{
   return {
     score,
     label,
-    emoji: getEmoji(label),
     breakdown: getBreakdown(score),
   };
 }
 
 export async function analyzeMultipleSentiments(inputs: string[] | YouTubeComment[]): Promise<{
-  overall: { score: number; label: SentimentLabel; emoji: string };
+  overall: { score: number; label: SentimentLabel };
   breakdown: SentimentBreakdown;
   commentCount: number;
 }> {
@@ -120,7 +111,7 @@ export async function analyzeMultipleSentiments(inputs: string[] | YouTubeCommen
   const overallLabel = getLabel(avgScore);
 
   return {
-    overall: { score: avgScore, label: overallLabel, emoji: getEmoji(overallLabel) },
+    overall: { score: avgScore, label: overallLabel },
     breakdown,
     commentCount: total,
   };

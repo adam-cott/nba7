@@ -15,7 +15,6 @@ interface SentimentBadgeProps {
   label: SentimentLabel;
   breakdown?: SentimentBreakdown;
   sentimentSource?: string;
-  showBreakdown?: boolean;
   size?: 'sm' | 'md' | 'lg';
 }
 
@@ -53,7 +52,6 @@ export default function SentimentBadge({
   label,
   breakdown,
   sentimentSource,
-  showBreakdown = false,
   size = 'md',
 }: SentimentBadgeProps) {
   const [showTooltip, setShowTooltip] = useState(false);
@@ -138,14 +136,6 @@ export default function SentimentBadge({
         </div>
       )}
 
-      {/* Always-visible breakdown (if enabled) */}
-      {showBreakdown && breakdown && !showTooltip && (
-        <div className="flex items-center gap-2 text-xs text-gray-500">
-          <span className="text-green-600">{breakdown.positive}%</span>
-          <span className="text-yellow-600">{breakdown.neutral}%</span>
-          <span className="text-red-600">{breakdown.negative}%</span>
-        </div>
-      )}
     </div>
   );
 }
