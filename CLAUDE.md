@@ -55,7 +55,6 @@ The main page uses a two-section layout:
 - `TeamFilter` — Team dropdown filter
 - `SentimentBadge` — Sentiment label with tooltip breakdown
 - `PollSection` / `Poll` — Fan polls (now on /polls route)
-- `NewsCard` — Legacy card component (kept, not used in v2 layout)
 
 ### Key Files
 - `src/lib/news-fetcher.ts` — RSS ingestion, filtering pipeline, fuzzy deduplication
@@ -69,7 +68,7 @@ The main page uses a two-section layout:
 2. Non-NBA content filtered (URL path + keyword checks)
 3. Betting/gambling content filtered
 4. Fuzzy deduplication (Jaccard similarity + entity overlap)
-5. Sentiment analyzed per article (YouTube comments → VADER, with headline fallback)
+5. Sentiment analyzed per article in parallel chunks (`SENTIMENT_CONCURRENCY = 6`) — cached items reused instantly, stale items fetched from YouTube concurrently
 6. Top 10 YouTube comments (by likes) stored in `article_comments` table during sentiment pipeline
 7. Results cached in Supabase (15-min news cache, 6-hour sentiment cache)
 8. Writes use `supabaseAdmin` (service role key); reads use `supabase` (anon key)
@@ -85,7 +84,7 @@ The main page uses a two-section layout:
 ### Filtering Pipeline (in order)
 1. **Non-NBA filter** — Blocks articles from /nfl/, /olympics/, /mlb/ etc. URL paths + non-NBA title keywords
 2. **Betting filter** — Blocks gambling content (sportsline, draftkings, parlay, etc.)
-3. **Fuzzy dedup** — Two criteria: Jaccard similarity >= 0.45 on stemmed word sets OR >= 2 shared proper noun entities. 12-hour time window. Keeps newer article.
+3. **Fuzzy dedup** — Two criteria: Jaccard similarity >= 0.45 on stemmed word sets OR >= 2 shared proper noun entities. 12-hour time window. Keeps newer article. 'nba' is excluded from entity matching (ubiquitous on the site, meaningless signal).
 
 ### Sentiment
 - VADER compound score thresholds: >= 0.05 positive, <= -0.05 negative, else neutral
@@ -127,7 +126,6 @@ YOUTUBE_API_KEY=                # YouTube Data API v3 (required for fan comments
 - ESPN RSS doesn't include thumbnails — og:image is fetched from article pages (5s timeout)
 - CBS Sports RSS leaks non-NBA articles despite the /nba/ feed URL
 - "odds" and "picks" in betting filter are intentionally specific ("betting odds", "expert picks") to avoid filtering legitimate NBA content
-- The `overflow-hidden` was removed from NewsCard's `<article>` element so the sentiment tooltip can render outside card bounds
 - Mock draft filter only blocks "nfl mock draft", "mlb mock draft", "nhl mock draft" — NBA mock drafts are kept
 - `supabaseAdmin` can be null if `SUPABASE_SERVICE_ROLE_KEY` is not set — all write operations must be guarded
 - Comments only populate when sentiment is fetched fresh (not from 6-hour cache). To force re-fetch: run `UPDATE news_items SET sentiment_analyzed_at = NULL;` in Supabase SQL Editor, then refresh the app
